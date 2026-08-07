@@ -9,19 +9,15 @@ Android のブラウザで開いて「ホーム画面に追加」すると、ア
 コマンドを打つたびに **コミットグラフが動く** ので、`merge` と `rebase` の違いや
 `reset --soft / --mixed / --hard` の効き方が目で見て分かります。
 
-> **置き場所について**
-> このアプリは専用リポジトリのルートに置かれる前提で書かれています。
-> いまは `hi-shi/pasone` の `git-quest/` 配下にあるので、専用リポジトリへ移す手順を
-> [専用リポジトリへ移す](#専用リポジトリへ移す) に書いてあります。
-> 下のコマンド例は移したあと（＝アプリがルートにある状態）のものです。
-
 ---
 
 ## 使ってみる
 
 ### スマホ（Android / iPhone）
 
-1. 公開 URL をブラウザで開く（下の「GitHub Pages で公開する」を参照）
+1. アプリの URL をブラウザで開く
+   （このリポジトリは非公開なので、[スマホで使う（公開せずに）](#スマホで使う公開せずに)の方法で
+   同じ Wi-Fi のパソコンから開くのが手軽です）
 2. メニューから「ホーム画面に追加」
 3. ホーム画面のアイコンから起動すると、アドレスバーの無い全画面で動きます
 
@@ -167,64 +163,62 @@ test/          node --test（外部依存なし）
 
 ---
 
-## 専用リポジトリへ移す
+## スマホで使う（公開せずに）
 
-いまは `hi-shi/pasone` の `git-quest/` 配下にありますが、
-アプリ本体がルートに来る専用リポジトリに移すと、Pages の公開 URL が
-`https://<ユーザー名>.github.io/git-quest/` と素直になり、
-同梱のワークフローもそのまま動きます。
+Web に公開しなくても、同じ Wi-Fi につながっていればスマホから使えます。
 
-**1. GitHub で空のリポジトリを作る**
-
-[新規リポジトリ作成ページ](https://github.com/new)で `git-quest` という名前で作ります。
-**README も .gitignore も追加しない**（空のまま）でください。
-
-**2. 手元で次を実行する**
+**1. パソコンでこのフォルダを配信する**
 
 ```sh
-git clone --branch claude/git-github-learning-game-yl0pi2 \
-  https://github.com/hi-shi/pasone.git git-quest-move
-cd git-quest-move
-
-# git-quest/ の中身だけを取り出して main ブランチにする
-git subtree split --prefix=git-quest -b main
-git checkout main
-
-# 新しいリポジトリに送る
-git remote set-url origin https://github.com/hi-shi/git-quest.git
-git push -u origin main
-```
-
-`git subtree split` はコミット履歴を保ったまま、
-サブディレクトリの中身をリポジトリのルートに引き上げてくれます。
-`.github/workflows/pages.yml` も `git-quest/.github/` に置いてあるので一緒に移動します。
-
-**3. 動作を確認する**
-
-```sh
-npm test                  # 127 件通ればOK
 python3 -m http.server 8000
 ```
 
-そのあと下の「GitHub Pages で公開する」に進みます。
+**2. パソコンの IP アドレスを調べる**
+
+```sh
+# macOS
+ipconfig getifaddr en0
+# Linux
+hostname -I | awk '{print $1}'
+# Windows (PowerShell)
+(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Wi-Fi).IPAddress
+```
+
+**3. スマホのブラウザで `http://<その IP>:8000` を開く**
+
+例: `http://192.168.1.5:8000`
+
+一度開くと Service Worker がアプリを端末に保存するので、
+**そのあとはパソコンを切ってもオフラインで遊べます**（第7章を除く）。
+ブラウザのメニューから「ホーム画面に追加」しておけば、アプリとして起動できます。
+
+> この方法なら外部には一切公開されません。同じ Wi-Fi の中だけで完結します。
 
 ---
 
-## GitHub Pages で公開する
+## GitHub Pages で公開する（任意）
 
-`.github/workflows/pages.yml` が入っているので、リポジトリ設定を1回変えるだけで公開できます。
+**自動公開は無効にしてあります。** `main` に push しても勝手には公開されません。
 
-1. リポジトリの **Settings → Pages** を開く
-2. **Source** を **GitHub Actions** にする
-3. 既定ブランチに push すると自動で公開されます
+公開したくなったときだけ、次の2つを行います。
+
+1. **Settings → Pages** を開き、**Source** を **GitHub Actions** にする
+2. **Actions** タブ → *Deploy Git Quest to Pages* → **Run workflow** を手で押す
 
 公開先は `https://<ユーザー名>.github.io/git-quest/` です。
 
+push のたびに自動公開したくなったら、`.github/workflows/pages.yml` の `on:` に
+次の2行を足してください。
+
+```yaml
+  push:
+    branches: [main]
+```
+
 > **private リポジトリの場合**
 > GitHub Pages を private リポジトリで使うには有料プラン（Pro / Team 以上）が必要です。
-> 無料プランなら、リポジトリを public にするか、
-> Pages を使わずに手元で `python3 -m http.server` して同じ Wi-Fi のスマホから
-> `http://<パソコンのIP>:8000` で開く手もあります。
+> 無料プランで private のままにしたい場合は、上の
+> 「スマホで使う（公開せずに）」の方法をどうぞ。
 
 ---
 

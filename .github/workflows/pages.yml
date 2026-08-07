@@ -1,14 +1,20 @@
 # アプリを GitHub Pages に公開する。
 #
-# このファイルはアプリが「リポジトリのルート」にある前提で書かれています。
-# 専用リポジトリ（hi-shi/git-quest など）に移すと、そのまま有効になります。
-# 有効にするには Settings → Pages → Source を "GitHub Actions" にする（1回だけ）。
+# 【重要】自動公開は無効にしてあります。
+# push しても勝手には公開されません。公開したいときだけ、
+# Actions タブ → このワークフロー → "Run workflow" を手で押してください。
+#
+# 自動公開に戻したいときは、下の `on:` に次の3行を足します。
+#   push:
+#     branches: [main]
+#
+# なお公開には Settings → Pages → Source を "GitHub Actions" にする設定も要ります。
+# リポジトリが private の場合、GitHub Pages は有料プラン（Pro 以上）でのみ使えます。
 
 name: Deploy Git Quest to Pages
 
+# 手動実行のみ。push では動きません。
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
