@@ -1,0 +1,13 @@
+{
+  "name": "git-quest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "git と GitHub のコマンド操作をゲーム感覚で覚える PWA",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "serve": "python3 -m http.server 8000",
+    "icons": "node tools/gen-icons.mjs"
+  },
+  "license": "MIT"
+}

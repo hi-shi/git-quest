@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+    />
+    <title>Git Quest — git と GitHub をゲームで覚える</title>
+    <meta name="description" content="git と GitHub のコマンド操作を、ステージ制のクエストで身につける学習アプリ。" />
+    <meta name="theme-color" content="#0d1117" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <!-- ヘッダー: 今どのステージにいるか -->
+    <header id="topbar">
+      <button id="btn-menu" class="icon-btn" aria-label="ステージ一覧">☰</button>
+      <div id="topbar-title">
+        <div id="stage-chapter">Git Quest</div>
+        <div id="stage-name">読み込み中…</div>
+      </div>
+      <button id="btn-restart" class="icon-btn" aria-label="このステージをやり直す">↻</button>
+    </header>
+
+    <!-- 目標の達成状況（常時表示の細い帯） -->
+    <div id="goalbar" role="status" aria-live="polite"></div>
+
+    <main id="views">
+      <!-- ===== ターミナル ===== -->
+      <section id="view-terminal" class="view is-active" aria-label="ターミナル">
+        <div id="term-output" class="term-output" role="log"></div>
+        <div id="chips" class="chips" aria-label="よく使うコマンド"></div>
+        <form id="term-form" autocomplete="off">
+          <span class="prompt">$</span>
+          <input
+            id="term-input"
+            type="text"
+            name="command"
+            enterkeyhint="send"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            placeholder="コマンドを入力（help で一覧）"
+            aria-label="コマンド入力"
+          />
+          <button type="submit" class="send-btn" aria-label="実行">▶</button>
+        </form>
+      </section>
+
+      <!-- ===== グラフ ===== -->
+      <section id="view-graph" class="view" aria-label="コミットグラフ">
+        <div class="view-head">
+          <h2>コミットグラフ</h2>
+          <p class="view-sub">丸=コミット / 色の付いた札=ブランチ / 太い枠=今いる場所（HEAD）</p>
+        </div>
+        <div id="graph-scroll" class="graph-scroll"></div>
+        <div id="graph-legend" class="legend"></div>
+      </section>
+
+      <!-- ===== ファイル ===== -->
+      <section id="view-files" class="view" aria-label="ファイルの状態">
+        <div class="view-head">
+          <h2>3つの場所</h2>
+          <p class="view-sub">
+            git はファイルを3か所で管理します。add はまん中へ、commit は右へ動かす操作です。
+          </p>
+        </div>
+        <div id="files-grid" class="files-grid"></div>
+        <div id="file-detail" class="file-detail"></div>
+      </section>
+
+      <!-- ===== クエスト ===== -->
+      <section id="view-quest" class="view" aria-label="クエスト">
+        <div id="quest-body"></div>
+      </section>
+
+      <!-- ===== GitHub 実践（第7章） ===== -->
+      <section id="view-real" class="view" aria-label="GitHub 実践">
+        <div id="real-body"></div>
+      </section>
+    </main>
+
+    <!-- 下部タブ -->
+    <nav id="tabbar" aria-label="画面切り替え">
+      <button class="tab is-active" data-view="terminal">
+        <span class="tab-ico">▮</span><span class="tab-label">ターミナル</span>
+      </button>
+      <button class="tab" data-view="graph">
+        <span class="tab-ico">⑂</span><span class="tab-label">グラフ</span>
+      </button>
+      <button class="tab" data-view="files">
+        <span class="tab-ico">▤</span><span class="tab-label">ファイル</span>
+      </button>
+      <button class="tab" data-view="quest">
+        <span class="tab-ico">◎</span><span class="tab-label">クエスト</span>
+        <span id="tab-quest-badge" class="tab-badge" hidden></span>
+      </button>
+    </nav>
+
+    <!-- ===== ステージ一覧（引き出し） ===== -->
+    <div id="drawer" class="drawer" hidden>
+      <div class="drawer-backdrop" data-close></div>
+      <aside class="drawer-panel" role="dialog" aria-label="ステージ一覧">
+        <header class="drawer-head">
+          <h2>ステージ一覧</h2>
+          <button class="icon-btn" data-close aria-label="閉じる">✕</button>
+        </header>
+        <div id="drawer-progress" class="drawer-progress"></div>
+        <div id="chapter-list"></div>
+        <footer class="drawer-foot">
+          <button id="btn-reset-progress" class="ghost-btn">進捗をすべて消す</button>
+          <p class="fine">進捗はこの端末のブラウザにだけ保存されます。</p>
+        </footer>
+      </aside>
+    </div>
+
+    <!-- ===== ファイル編集パネル ===== -->
+    <div id="editor" class="modal" hidden>
+      <div class="modal-backdrop" data-close-editor></div>
+      <div class="modal-panel" role="dialog" aria-label="ファイル編集">
+        <header class="modal-head">
+          <span id="editor-name" class="mono"></span>
+          <button class="icon-btn" data-close-editor aria-label="閉じる">✕</button>
+        </header>
+        <p id="editor-help" class="editor-help"></p>
+        <textarea
+          id="editor-text"
+          spellcheck="false"
+          autocapitalize="off"
+          autocorrect="off"
+          aria-label="ファイルの中身"
+        ></textarea>
+        <div id="editor-tools" class="editor-tools"></div>
+        <footer class="modal-foot">
+          <button id="editor-cancel" class="ghost-btn">やめる</button>
+          <button id="editor-save" class="primary-btn">保存</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ===== クリア演出 ===== -->
+    <div id="clear-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-clear></div>
+      <div class="modal-panel clear-panel" role="dialog" aria-label="ステージクリア">
+        <div class="clear-mark">クリア！</div>
+        <h3 id="clear-title"></h3>
+        <div id="clear-teach" class="teach"></div>
+        <div id="clear-note" class="clear-note"></div>
+        <footer class="modal-foot">
+          <button id="clear-stay" class="ghost-btn">この画面に残る</button>
+          <button id="clear-next" class="primary-btn">次のステージへ</button>
+        </footer>
+      </div>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
