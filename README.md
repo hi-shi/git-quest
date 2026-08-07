@@ -9,6 +9,12 @@ Android のブラウザで開いて「ホーム画面に追加」すると、ア
 コマンドを打つたびに **コミットグラフが動く** ので、`merge` と `rebase` の違いや
 `reset --soft / --mixed / --hard` の効き方が目で見て分かります。
 
+> **置き場所について**
+> このアプリは専用リポジトリのルートに置かれる前提で書かれています。
+> いまは `hi-shi/pasone` の `git-quest/` 配下にあるので、専用リポジトリへ移す手順を
+> [専用リポジトリへ移す](#専用リポジトリへ移す) に書いてあります。
+> 下のコマンド例は移したあと（＝アプリがルートにある状態）のものです。
+
 ---
 
 ## 使ってみる
@@ -26,7 +32,6 @@ Android のブラウザで開いて「ホーム画面に追加」すると、ア
 `file://` で直接開くと ES モジュールが読めないので、簡単なサーバー越しに開きます。
 
 ```sh
-cd git-quest
 python3 -m http.server 8000
 # → http://localhost:8000 をブラウザで開く
 ```
@@ -118,7 +123,6 @@ python3 -m http.server 8000
 ## 開発
 
 ```sh
-cd git-quest
 npm test          # 擬似 Git エンジンと全ステージの自動テスト（127 件）
 npm run icons     # アイコン PNG を再生成
 npm run serve     # ローカルで開く
@@ -163,6 +167,49 @@ test/          node --test（外部依存なし）
 
 ---
 
+## 専用リポジトリへ移す
+
+いまは `hi-shi/pasone` の `git-quest/` 配下にありますが、
+アプリ本体がルートに来る専用リポジトリに移すと、Pages の公開 URL が
+`https://<ユーザー名>.github.io/git-quest/` と素直になり、
+同梱のワークフローもそのまま動きます。
+
+**1. GitHub で空のリポジトリを作る**
+
+[新規リポジトリ作成ページ](https://github.com/new)で `git-quest` という名前で作ります。
+**README も .gitignore も追加しない**（空のまま）でください。
+
+**2. 手元で次を実行する**
+
+```sh
+git clone --branch claude/git-github-learning-game-yl0pi2 \
+  https://github.com/hi-shi/pasone.git git-quest-move
+cd git-quest-move
+
+# git-quest/ の中身だけを取り出して main ブランチにする
+git subtree split --prefix=git-quest -b main
+git checkout main
+
+# 新しいリポジトリに送る
+git remote set-url origin https://github.com/hi-shi/git-quest.git
+git push -u origin main
+```
+
+`git subtree split` はコミット履歴を保ったまま、
+サブディレクトリの中身をリポジトリのルートに引き上げてくれます。
+`.github/workflows/pages.yml` も `git-quest/.github/` に置いてあるので一緒に移動します。
+
+**3. 動作を確認する**
+
+```sh
+npm test                  # 127 件通ればOK
+python3 -m http.server 8000
+```
+
+そのあと下の「GitHub Pages で公開する」に進みます。
+
+---
+
 ## GitHub Pages で公開する
 
 `.github/workflows/pages.yml` が入っているので、リポジトリ設定を1回変えるだけで公開できます。
@@ -171,7 +218,13 @@ test/          node --test（外部依存なし）
 2. **Source** を **GitHub Actions** にする
 3. 既定ブランチに push すると自動で公開されます
 
-公開先は `https://<ユーザー名>.github.io/<リポジトリ名>/` です。
+公開先は `https://<ユーザー名>.github.io/git-quest/` です。
+
+> **private リポジトリの場合**
+> GitHub Pages を private リポジトリで使うには有料プラン（Pro / Team 以上）が必要です。
+> 無料プランなら、リポジトリを public にするか、
+> Pages を使わずに手元で `python3 -m http.server` して同じ Wi-Fi のスマホから
+> `http://<パソコンのIP>:8000` で開く手もあります。
 
 ---
 
