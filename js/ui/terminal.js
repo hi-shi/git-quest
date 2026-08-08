@@ -18,7 +18,7 @@ const GIT_SUBCOMMANDS = Object.keys(HELP).concat([
 export class Terminal {
   /**
    * @param {object} els {output, form, input, chips}
-   * @param {(line:string)=>void} onSubmit
+   * @param {(line:string, opts?:{animate?:boolean})=>void} onSubmit
    */
   constructor(els, onSubmit) {
     this.out = els.output;
@@ -36,7 +36,7 @@ export class Terminal {
       this.input.value = '';
       this.history.push(line);
       this.histPos = this.history.length;
-      this.onSubmit(line);
+      this.onSubmit(line, { animate: false });
     });
 
     this.input.addEventListener('keydown', (e) => {
@@ -103,11 +103,8 @@ export class Terminal {
   }
 
   clear() {
-    // 打ち込み途中でステージが切り替わると、前のコマンドの続きが残ってしまう
-    if (this.typing) {
-      clearTimeout(this.typing);
-      this.typing = null;
-    }
+    // 打ち込み途中でステージが切り替わっても中途半端な行が残らないように
+    this.finishTyping();
     this.input.value = '';
     this.out.innerHTML = '';
   }
@@ -152,46 +149,67 @@ export class Terminal {
   }
 
   /**
-   * 入力欄に1文字ずつ打ち込む。
-   * 連打されたときは前のアニメーションを止めて、最後のものだけを走らせる。
-   * 「動きより速さ」を選ぶ設定（prefers-reduced-motion）なら一気に入れる。
+   * 打ち込み中のアニメーションを即座に完了させる。
+   * 次のコマンドが来たときなど、待たせたくない場面で使う。
    */
-  typeInto(text, done) {
+  finishTyping() {
     if (this.typing) {
-      clearTimeout(this.typing);
+      clearTimeout(this.typing.timer);
+      this.typing.finish();
       this.typing = null;
     }
-    const instant =
+  }
+
+  /**
+   * 実行したコマンドを `$ ...` としてターミナルに出す。
+   * animate を付けると1文字ずつ現れる（チップをタップしたとき用）。
+   * 自分で打った場合は既に見えているので、待たせずに即座に出す。
+   * @returns {Promise<void>} 表示し終わったら解決する
+   */
+  writeCommand(text, { animate = false } = {}) {
+    this.finishTyping();
+
+    const div = document.createElement('div');
+    div.className = 'term-block';
+    const p = document.createElement('div');
+    p.className = 'term-cmd mono';
+    div.appendChild(p);
+    this.out.appendChild(div);
+
+    const reduce =
       typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (instant || !text) {
-      this.input.value = text;
-      if (done) done();
-      return;
+    if (!animate || reduce || !text) {
+      p.textContent = text;
+      this.scrollToEnd();
+      return Promise.resolve();
     }
 
-    this.input.value = '';
-    this.input.focus({ preventScroll: true });
     const chars = [...text]; // 絵文字や結合文字で壊れないように
-    // 長いコマンドでも待たされないよう、全体で 320ms 前後に収める
-    const step = Math.max(12, Math.min(45, Math.round(320 / chars.length)));
-    let i = 0;
+    // 長いコマンドでも待たされないよう、全体で 400ms 前後に収める
+    const step = Math.max(14, Math.min(55, Math.round(400 / chars.length)));
+    p.classList.add('typing');
+    this.scrollToEnd();
 
-    const tick = () => {
-      this.input.value = chars.slice(0, ++i).join('');
-      const n = this.input.value.length;
-      try {
-        this.input.setSelectionRange(n, n);
-      } catch {
-        /* type によっては選択範囲を触れない */
-      }
-      if (i < chars.length) {
-        this.typing = setTimeout(tick, step);
-      } else {
-        this.typing = null;
-        if (done) done();
-      }
-    };
-    this.typing = setTimeout(tick, step);
+    return new Promise((resolve) => {
+      let i = 0;
+      const finish = () => {
+        p.textContent = text;
+        p.classList.remove('typing');
+        this.scrollToEnd();
+        resolve();
+      };
+      const tick = () => {
+        p.textContent = chars.slice(0, ++i).join('');
+        if (i >= chars.length) {
+          this.typing = null;
+          finish();
+          return;
+        }
+        this.out.scrollTop = this.out.scrollHeight;
+        this.typing.timer = setTimeout(tick, step);
+      };
+      this.typing = { timer: setTimeout(tick, step), finish };
+    });
   }
 
   /**
@@ -234,20 +252,18 @@ export class Terminal {
       b.className = 'chip' + (c.accent ? ' accent' : '');
       b.textContent = c.label;
       b.addEventListener('click', () => {
-        // 1文字ずつ打ち込む。自分で打ったときと同じ字面が目に入るので、
-        // タップだけで進めていてもコマンドを覚えられる。
-        this.typeInto(c.text, () => {
-          if (c.run) {
-            const line = this.input.value;
-            this.input.value = '';
-            this.onSubmit(line);
-          } else {
-            // 続きを打ってもらう系（引数が要るもの）
-            this.input.focus();
-            const n = this.input.value.length;
-            this.input.setSelectionRange(n, n);
-          }
-        });
+        if (c.run) {
+          this.input.value = '';
+          // ターミナル側で1文字ずつ現れる。タップだけで進めていても
+          // コマンドの字面が目に入るので、自然と覚えられる。
+          this.onSubmit(c.text, { animate: true });
+        } else {
+          // 続きを打ってもらう系（引数が要るもの）は入力欄に入れて待つ
+          this.input.value = c.text;
+          this.input.focus();
+          const n = this.input.value.length;
+          requestAnimationFrame(() => this.input.setSelectionRange(n, n));
+        }
       });
       this.chipsEl.appendChild(b);
     }

@@ -100,11 +100,25 @@ function loadStage(stageId, { fresh = false } = {}) {
   showView('terminal');
 }
 
-function handleCommand(line) {
+// コマンドの表示は非同期（チップからは1文字ずつ出す）なので、
+// 続けて実行されても順番が入れ替わらないように直列に流す。
+let commandChain = Promise.resolve();
+
+function handleCommand(line, opts) {
+  commandChain = commandChain.then(() => runCommand(line, opts)).catch((e) => {
+    console.error(e);
+  });
+  return commandChain;
+}
+
+async function runCommand(line, { animate = false } = {}) {
   const session = state.session;
   if (!session) return;
 
-  terminal.write({ kind: 'cmd', text: line });
+  // 打ち終わってから結果を出す。先に結果が出ると順序が逆に見えるため。
+  await terminal.writeCommand(line, { animate });
+  if (state.session !== session) return; // 途中でステージが切り替わった
+
   const { result, newlyCleared, newlyDone } = execute(session, line);
 
   if (result.clear) {
@@ -414,7 +428,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 
 // デバッグ／自動テストから触れるように最小限だけ公開する
 window.__gitQuest = {
-  run: (line) => handleCommand(line),
+  run: (line, opts) => handleCommand(line, opts),
   get session() {
     return state.session;
   },
