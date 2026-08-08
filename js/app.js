@@ -56,7 +56,6 @@ const els = {
   clearTitle: $('clear-title'),
   clearTeach: $('clear-teach'),
   clearNote: $('clear-note'),
-  clearNext: $('clear-next'),
   tabBadge: $('tab-quest-badge'),
 };
 
@@ -143,12 +142,22 @@ function onStageCleared() {
     ? ''
     : '別のやり方でクリアしました。想定していた手順もヒントに載っているので、目を通しておくと引き出しが増えます。';
 
-  const next = nextStageId(session.stage.id);
-  els.clearNext.textContent = next ? '次のステージへ' : '第7章（GitHub 実践）へ';
-  els.clearNext.dataset.next = next || 'real';
-
   els.clearModal.hidden = false;
+
+  // モーダルを閉じたあと、状態をゆっくり見てから自分のタイミングで進めるように、
+  // 次へ進む導線はターミナルの流れの中に置く。
+  const next = nextStageId(session.stage.id);
+  const nextStage = next ? findStage(next) : null;
   terminal.write({ kind: 'goal', text: 'ステージクリア！' });
+  terminal.write({
+    kind: 'sys',
+    text: nextStage
+      ? `グラフ・ファイル画面で今の状態を確認できます。準備ができたら次のステージへ。\n次は「${nextStage.title}」です。`
+      : 'グラフ・ファイル画面で今の状態を確認できます。第1〜6章はこれで終わりです。',
+  });
+  terminal.writeAction(nextStage ? `次のステージへ: ${nextStage.title}` : '第7章（GitHub 実践）へ', () =>
+    goNext()
+  );
 }
 
 // ---------------------------------------------------------------- 描画
@@ -370,14 +379,10 @@ for (const el of els.editor.querySelectorAll('[data-close-editor]')) {
 
 // ---------------------------------------------------------------- クリア演出
 
+// 閉じるだけ。次へ進む導線はターミナル側に置いてある（onStageCleared）。
 $('clear-stay').addEventListener('click', () => {
   els.clearModal.hidden = true;
-});
-els.clearNext.addEventListener('click', () => {
-  els.clearModal.hidden = true;
-  const next = els.clearNext.dataset.next;
-  if (next && next !== 'real') loadStage(next, { fresh: true });
-  else showView('real');
+  showView('terminal');
 });
 for (const el of els.clearModal.querySelectorAll('[data-close-clear]')) {
   el.addEventListener('click', () => {

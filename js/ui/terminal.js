@@ -103,6 +103,12 @@ export class Terminal {
   }
 
   clear() {
+    // 打ち込み途中でステージが切り替わると、前のコマンドの続きが残ってしまう
+    if (this.typing) {
+      clearTimeout(this.typing);
+      this.typing = null;
+    }
+    this.input.value = '';
     this.out.innerHTML = '';
   }
 
@@ -145,6 +151,70 @@ export class Terminal {
     this.scrollToEnd();
   }
 
+  /**
+   * 入力欄に1文字ずつ打ち込む。
+   * 連打されたときは前のアニメーションを止めて、最後のものだけを走らせる。
+   * 「動きより速さ」を選ぶ設定（prefers-reduced-motion）なら一気に入れる。
+   */
+  typeInto(text, done) {
+    if (this.typing) {
+      clearTimeout(this.typing);
+      this.typing = null;
+    }
+    const instant =
+      typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (instant || !text) {
+      this.input.value = text;
+      if (done) done();
+      return;
+    }
+
+    this.input.value = '';
+    this.input.focus({ preventScroll: true });
+    const chars = [...text]; // 絵文字や結合文字で壊れないように
+    // 長いコマンドでも待たされないよう、全体で 320ms 前後に収める
+    const step = Math.max(12, Math.min(45, Math.round(320 / chars.length)));
+    let i = 0;
+
+    const tick = () => {
+      this.input.value = chars.slice(0, ++i).join('');
+      const n = this.input.value.length;
+      try {
+        this.input.setSelectionRange(n, n);
+      } catch {
+        /* type によっては選択範囲を触れない */
+      }
+      if (i < chars.length) {
+        this.typing = setTimeout(tick, step);
+      } else {
+        this.typing = null;
+        if (done) done();
+      }
+    };
+    this.typing = setTimeout(tick, step);
+  }
+
+  /**
+   * ターミナルの流れの中に押せるボタンを1つ置く。
+   * ステージクリア後の「次へ進む」導線など、コマンドではない操作に使う。
+   */
+  writeAction(label, onClick) {
+    const div = document.createElement('div');
+    div.className = 'term-block';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'term-action';
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      b.disabled = true;
+      onClick();
+    });
+    div.appendChild(b);
+    this.out.appendChild(div);
+    this.scrollToEnd();
+    return b;
+  }
+
   scrollToEnd() {
     requestAnimationFrame(() => {
       this.out.scrollTop = this.out.scrollHeight;
@@ -164,16 +234,20 @@ export class Terminal {
       b.className = 'chip' + (c.accent ? ' accent' : '');
       b.textContent = c.label;
       b.addEventListener('click', () => {
-        if (c.run) {
-          this.input.value = '';
-          this.onSubmit(c.text);
-        } else {
-          // 続きを打ってもらう系（引数が要るもの）
-          this.input.value = c.text;
-          this.input.focus();
-          const n = this.input.value.length;
-          requestAnimationFrame(() => this.input.setSelectionRange(n, n));
-        }
+        // 1文字ずつ打ち込む。自分で打ったときと同じ字面が目に入るので、
+        // タップだけで進めていてもコマンドを覚えられる。
+        this.typeInto(c.text, () => {
+          if (c.run) {
+            const line = this.input.value;
+            this.input.value = '';
+            this.onSubmit(line);
+          } else {
+            // 続きを打ってもらう系（引数が要るもの）
+            this.input.focus();
+            const n = this.input.value.length;
+            this.input.setSelectionRange(n, n);
+          }
+        });
       });
       this.chipsEl.appendChild(b);
     }
