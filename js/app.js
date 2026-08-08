@@ -25,6 +25,7 @@ import {
   resetProgress,
 } from './store.js';
 import { hasConflictMarkers } from './engine/diff.js';
+import { ensureUnlocked } from './gate.js';
 import { refreshIgnore } from './engine/repo.js';
 
 const $ = (id) => document.getElementById(id);
@@ -393,6 +394,8 @@ function firstUnclearedStage() {
   return (next || ALL_STAGES[0]).id;
 }
 
+// 合言葉が設定されていれば、解除されるまでアプリを起動しない
+await ensureUnlocked();
 loadStage(firstUnclearedStage());
 
 // Service Worker（オフライン動作）。file:// で開いたときは登録しない。

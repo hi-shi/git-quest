@@ -16,8 +16,8 @@ Android のブラウザで開いて「ホーム画面に追加」すると、ア
 ### スマホ（Android / iPhone）
 
 1. アプリの URL をブラウザで開く
-   （このリポジトリは非公開なので、[スマホで使う（公開せずに）](#スマホで使う公開せずに)の方法で
-   同じ Wi-Fi のパソコンから開くのが手軽です）
+   （[合言葉つきで公開する](#合言葉つきで公開する)か、パソコンをつけっぱなしにしたくない場合以外は
+   [スマホで使う（公開せずに）](#スマホで使う公開せずに)でも開けます）
 2. メニューから「ホーム画面に追加」
 3. ホーム画面のアイコンから起動すると、アドレスバーの無い全画面で動きます
 
@@ -119,7 +119,7 @@ python3 -m http.server 8000
 ## 開発
 
 ```sh
-npm test          # 擬似 Git エンジンと全ステージの自動テスト（127 件）
+npm test          # 擬似 Git エンジン・全ステージ・ロックの自動テスト（133 件）
 npm run icons     # アイコン PNG を再生成
 npm run serve     # ローカルで開く
 ```
@@ -140,6 +140,7 @@ js/ui/         画面（ターミナル / グラフ / ファイル / クエス�
 js/stages/     ステージ定義（データ駆動）
 js/real/       第7章: GitHub REST クライアントと安全チェック
 js/game.js     ステージ進行と目標判定
+js/gate.js     公開ページ用の簡易ロック（gate-config.js に合言葉のハッシュ）
 test/          node --test（外部依存なし）
 ```
 
@@ -196,29 +197,82 @@ hostname -I | awk '{print $1}'
 
 ---
 
-## GitHub Pages で公開する（任意）
+## 合言葉つきで公開する
 
-**自動公開は無効にしてあります。** `main` に push しても勝手には公開されません。
+GitHub Pages（無料）で公開しつつ、ページに簡易的なロックをかけられます。
+パソコンをつけっぱなしにしなくてよいのが利点です。
 
-公開したくなったときだけ、次の2つを行います。
+### まず知っておいてほしいこと
 
-1. **Settings → Pages** を開き、**Source** を **GitHub Actions** にする
-2. **Actions** タブ → *Deploy Git Quest to Pages* → **Run workflow** を手で押す
+このロックは **ブラウザの中だけで判定する「よそ見防止」** です。**本物の認証ではありません。**
 
-公開先は `https://<ユーザー名>.github.io/git-quest/` です。
+- 合言葉そのものはコードに入っていません（PBKDF2 で 25 万回伸ばしたハッシュだけを置いています）が、
+  **総当たりで試せば破れます**。短い・ありがちな合言葉ほど簡単に破れます
+- **無料プランで Pages を使うにはリポジトリが public である必要があり、
+  その場合アプリのソースは GitHub 上で誰でも読めます。**
+  つまり「URL を踏んだ人にすぐ使われない」だけで、内容が秘密になるわけではありません
+- 秘密にしたい情報は、絶対にこのアプリに入れないでください
 
-push のたびに自動公開したくなったら、`.github/workflows/pages.yml` の `on:` に
-次の2行を足してください。
+「たまたま URL を知った人に使われたくない」「検索に出したくない」目的には十分です。
+本当に人を絞りたいなら、Cloudflare Pages + Cloudflare Access（無料枠あり）など、
+サーバー側で認証する仕組みを使ってください。
 
-```yaml
-  push:
-    branches: [main]
+### 手順
+
+**1. 合言葉を決める**
+
+```sh
+node tools/set-password.mjs
 ```
 
-> **private リポジトリの場合**
-> GitHub Pages を private リポジトリで使うには有料プラン（Pro / Team 以上）が必要です。
-> 無料プランで private のままにしたい場合は、上の
-> 「スマホで使う（公開せずに）」の方法をどうぞ。
+入力した文字は画面に出ません。合言葉そのものは保存されず、
+`js/gate-config.js` にハッシュだけが書き込まれます。
+ハッシュは公開されるので、**8文字以上で、辞書に無い文字列**にしてください。
+
+ロック画面に出す案内文も付けられます（合言葉そのものは書かないこと）。
+
+```sh
+node tools/set-password.mjs --hint "いつもの合言葉です"
+```
+
+**2. リポジトリを public にする**
+
+Settings → Danger Zone → Change repository visibility → Public
+
+（無料プランでは private リポジトリの Pages が使えないためです）
+
+**3. Pages を有効にする**
+
+Settings → Pages → Source を **GitHub Actions** に
+
+**4. push する**
+
+```sh
+git add js/gate-config.js
+git commit -m "ロックの合言葉を設定"
+git push
+```
+
+`main` に push すると自動で公開されます。
+公開先は `https://<ユーザー名>.github.io/git-quest/` です。
+
+スマホでその URL を開くと合言葉を聞かれ、一度入れれば同じ端末では覚えています。
+「ホーム画面に追加」すればアプリとして起動できます。
+
+### ロックを外す・止める
+
+```sh
+node tools/set-password.mjs --off    # ロックを外す（ハッシュも消える）
+```
+
+公開そのものを止めるなら Settings → Pages で Source を **None** に戻します。
+`.github/workflows/pages.yml` の `on:` から `push:` の2行を消せば、
+手動実行（Actions タブの Run workflow）のときだけ公開されるようになります。
+
+### 検索避け
+
+`robots.txt` と `<meta name="robots" content="noindex, nofollow">` を入れてあるので、
+検索エンジンには載りません（行儀の良いクローラーに対してのみ有効です）。
 
 ---
 

@@ -11,6 +11,8 @@ const SHELL = [
   './js/app.js',
   './js/game.js',
   './js/store.js',
+  './js/gate.js',
+  './js/gate-config.js',
   './js/engine/repo.js',
   './js/engine/diff.js',
   './js/engine/parser.js',

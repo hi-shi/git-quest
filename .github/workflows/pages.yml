@@ -1,20 +1,17 @@
 # アプリを GitHub Pages に公開する。
 #
-# 【重要】自動公開は無効にしてあります。
-# push しても勝手には公開されません。公開したいときだけ、
-# Actions タブ → このワークフロー → "Run workflow" を手で押してください。
+# 公開ページには合言葉によるロックをかけられます（tools/set-password.mjs）。
+# ただしあれは「よそ見防止」で、本物の認証ではありません。
+# 秘密の情報はこのアプリに入れないでください。
 #
-# 自動公開に戻したいときは、下の `on:` に次の3行を足します。
-#   push:
-#     branches: [main]
-#
-# なお公開には Settings → Pages → Source を "GitHub Actions" にする設定も要ります。
-# リポジトリが private の場合、GitHub Pages は有料プラン（Pro 以上）でのみ使えます。
+# 公開を止めたいときは、下の `on:` から push の2行を消せば手動実行だけになります。
+# 完全に止めるなら Settings → Pages で Source を None に戻してください。
 
 name: Deploy Git Quest to Pages
 
-# 手動実行のみ。push では動きません。
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
