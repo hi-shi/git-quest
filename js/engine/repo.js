@@ -19,6 +19,15 @@ export function hashObject(type, payload) {
 /** まっさらな（git init すらしていない）リポジトリ。 */
 export function createRepo(opts = {}) {
   return {
+    // --- どこにいるか（paths.js が扱う） ---
+    projectName: opts.projectName || 'my-project',
+    // いま居る場所（絶対パス）。既定はプロジェクトフォルダの直下。
+    cwd: '/home/you/' + (opts.projectName || 'my-project'),
+    // .git がある場所（プロジェクト相対）。'' = プロジェクト直下。null = まだ無い。
+    gitRoot: null,
+    // mkdir で作られた空のディレクトリ
+    dirs: [],
+
     initialized: false,
     objects: Object.create(null), // sha -> {type, ...}
     refs: Object.create(null), // 'refs/heads/main' -> sha
@@ -44,6 +53,7 @@ export function createRepo(opts = {}) {
 export function initRepo(opts = {}) {
   const repo = createRepo(opts);
   repo.initialized = true;
+  repo.gitRoot = '';
   repo.index = Object.create(null);
   repo.HEAD = { type: 'branch', ref: 'refs/heads/' + repo.defaultBranch };
   return repo;
@@ -269,6 +279,40 @@ export function refreshIgnore(repo) {
 }
 
 /**
+ * 作業ツリーのうち、リポジトリの中にあるものだけを
+ * 「リポジトリルートからの相対パス」に直して返す。
+ * 通常 gitRoot はプロジェクト直下なのでそのままだが、
+ * サブディレクトリに作られた（入れ子）場合はここでずれを吸収する。
+ */
+export function repoWorkdir(repo) {
+  const root = repo.gitRoot;
+  if (!root) return repo.workdir;
+  const out = Object.create(null);
+  const prefix = root + '/';
+  for (const [p, content] of Object.entries(repo.workdir)) {
+    if (p.startsWith(prefix)) out[p.slice(prefix.length)] = content;
+  }
+  return out;
+}
+
+/** リポジトリ相対パス → 作業ツリー（プロジェクト相対）のキー。 */
+export function toWorkKey(repo, repoRel) {
+  return repo.gitRoot ? repo.gitRoot + '/' + repoRel : repoRel;
+}
+
+/** リポジトリの外にあるファイル。作業ツリーを作り直すときに巻き添えにしないため。 */
+export function outsideRepo(repo) {
+  const root = repo.gitRoot;
+  if (!root) return Object.create(null);
+  const out = Object.create(null);
+  const prefix = root + '/';
+  for (const [p, c] of Object.entries(repo.workdir)) {
+    if (!p.startsWith(prefix)) out[p] = c;
+  }
+  return out;
+}
+
+/**
  * 作業ツリー / index / HEAD の3者を比較した状態。
  * git status の表示も、ステージのクリア判定もこれ1本で作る。
  */
@@ -276,7 +320,7 @@ export function status(repo) {
   refreshIgnore(repo);
   const head = commitTree(repo, headCommit(repo));
   const index = repo.index || Object.create(null);
-  const work = repo.workdir;
+  const work = repoWorkdir(repo);
   const staged = []; // index と HEAD の差 = コミット予定
   const unstaged = []; // 作業ツリーと index の差
   const untracked = [];
@@ -322,33 +366,42 @@ export function trackedPaths(repo) {
  * `wasTracked` に入っていない = 一度も add されていないファイルだけが生き残る。
  */
 export function checkoutIndexToWorkdir(repo, wasTracked = new Set()) {
+  const work = repoWorkdir(repo);
   const next = Object.create(null);
-  for (const p of Object.keys(repo.workdir)) {
-    if (!wasTracked.has(p)) next[p] = repo.workdir[p];
+  for (const p of Object.keys(work)) {
+    if (!wasTracked.has(p)) next[p] = work[p];
   }
   for (const p of Object.keys(repo.index)) {
     next[p] = readBlob(repo, repo.index[p]) ?? '';
   }
-  repo.workdir = next;
+  const rebuilt = outsideRepo(repo);
+  for (const [p, c] of Object.entries(next)) rebuilt[toWorkKey(repo, p)] = c;
+  repo.workdir = rebuilt;
   refreshIgnore(repo);
 }
 
 /** あるコミットのスナップショットを index と作業ツリーに展開する。 */
 export function checkoutCommit(repo, sha, { keepUntracked = true } = {}) {
   const tree = commitTree(repo, sha);
+  const work = repoWorkdir(repo);
   const untracked = keepUntracked
-    ? Object.keys(repo.workdir).filter((p) => !(p in repo.index) && !(p in tree))
+    ? Object.keys(work).filter((p) => !(p in repo.index) && !(p in tree))
     : [];
   const kept = Object.create(null);
-  for (const p of untracked) kept[p] = repo.workdir[p];
+  for (const p of untracked) kept[p] = work[p];
 
   repo.index = Object.create(null);
-  repo.workdir = Object.create(null);
+  const next = Object.create(null);
   for (const p of Object.keys(tree)) {
     repo.index[p] = tree[p];
-    repo.workdir[p] = readBlob(repo, tree[p]) ?? '';
+    next[p] = readBlob(repo, tree[p]) ?? '';
   }
-  for (const p of Object.keys(kept)) repo.workdir[p] = kept[p];
+  for (const p of Object.keys(kept)) next[p] = kept[p];
+
+  // リポジトリの外のファイルは触らない
+  const rebuilt = outsideRepo(repo);
+  for (const [p, c] of Object.entries(next)) rebuilt[toWorkKey(repo, p)] = c;
+  repo.workdir = rebuilt;
   refreshIgnore(repo);
 }
 

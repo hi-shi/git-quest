@@ -38,6 +38,8 @@ const els = {
   termForm: $('term-form'),
   termInput: $('term-input'),
   chips: $('chips'),
+  cwdPath: $('cwd-path'),
+  cwdBadge: $('cwd-badge'),
   graphScroll: $('graph-scroll'),
   graphLegend: $('graph-legend'),
   filesGrid: $('files-grid'),
@@ -68,7 +70,14 @@ const state = {
 };
 
 const terminal = new Terminal(
-  { output: els.termOutput, form: els.termForm, input: els.termInput, chips: els.chips },
+  {
+    output: els.termOutput,
+    form: els.termForm,
+    input: els.termInput,
+    chips: els.chips,
+    cwdPath: els.cwdPath,
+    cwdBadge: els.cwdBadge,
+  },
   handleCommand
 );
 
@@ -134,7 +143,7 @@ async function runCommand(line, { animate = false } = {}) {
     terminal.write({ kind: 'goal', text: session.stage.goals[i].text });
   }
 
-  terminal.bind(session.repo);
+  terminal.bind(session.repo); // 現在地バーもここで更新される
   renderAll();
 
   if (newlyCleared) onStageCleared();
@@ -167,9 +176,9 @@ function onStageCleared() {
     kind: 'sys',
     text: nextStage
       ? `グラフ・ファイル画面で今の状態を確認できます。準備ができたら次のステージへ。\n次は「${nextStage.title}」です。`
-      : 'グラフ・ファイル画面で今の状態を確認できます。第1〜6章はこれで終わりです。',
+      : 'グラフ・ファイル画面で今の状態を確認できます。第1〜7章はこれで終わりです。',
   });
-  terminal.writeAction(nextStage ? `次のステージへ: ${nextStage.title}` : '第7章（GitHub 実践）へ', () =>
+  terminal.writeAction(nextStage ? `次のステージへ: ${nextStage.title}` : '第8章（GitHub 実践）へ', () =>
     goNext()
   );
 }
@@ -181,9 +190,9 @@ function renderAll() {
   if (!session) return;
   const { stage, repo, goalState, cleared } = session;
 
-  // 第7章は擬似リポジトリの外なので、見出しも目標の帯も専用の表示にする
+  // 第8章は擬似リポジトリの外なので、見出しも目標の帯も専用の表示にする
   if (state.view === 'real') {
-    els.stageChapter.textContent = '第7章 GitHub 実践';
+    els.stageChapter.textContent = '第8章 GitHub 実践';
     els.stageName.textContent = '本物のリポジトリを動かす';
     els.goalbar.innerHTML = '';
     const pip = document.createElement('span');

@@ -22,6 +22,18 @@ const SOLUTIONS = {
     'git commit -m "味噌汁のレシピを追加"',
   ],
 
+  // ---- 現在地の章
+  'cwd-1': ['pwd', 'cd src', 'ls', 'cd ..', 'pwd'],
+  'cwd-2': ['cd ..', 'git status', 'cd my-project', 'git status'],
+  'cwd-3': [
+    'git add .',
+    'git status',
+    'cd ..',
+    'git add .',
+    'git status',
+  ],
+  'cwd-4': ['git init', 'pwd', 'cd ..', 'git add .', 'git commit -m "テーマを追加"'],
+
   // ---- 第2章
   'ch2-1': ['git diff', 'git diff --staged'],
   'ch2-2': ['git restore --staged secret.txt', 'git status'],
@@ -90,7 +102,11 @@ function play(stageId, { allowFail = [] } = {}) {
     const { result } = execute(session, line);
     if (!result.ok && !allowFail.some((re) => re.test(line))) {
       // 失敗が想定されているステージ（push 拒否など）以外は落とす
-      const expectFail = /^(git push|git branch -d feature\/wip|git merge feature\/copy|git rebase main)/.test(line);
+      const expectFail =
+        /^(git push|git branch -d feature\/wip|git merge feature\/copy|git rebase main)/.test(line) ||
+        // 現在地の章は「失敗を体験する」のが目的のステージがある
+        (stageId === 'cwd-2' && /^git status/.test(line)) ||
+        (stageId === 'cwd-4' && /^git init/.test(line));
       if (!expectFail) {
         assert.fail(`${stageId}: 「${line}」が失敗\n${result.out}\n${result.hint || ''}`);
       }
@@ -160,7 +176,7 @@ test('newlyDone は新しく達成した目標だけを返す', () => {
 });
 
 test('章の構成が壊れていない', () => {
-  assert.equal(CHAPTERS.length, 6);
+  assert.equal(CHAPTERS.length, 7);
   for (const ch of CHAPTERS) {
     assert.ok(ch.title && ch.subtitle && ch.blurb, `${ch.id} のメタ情報が欠けている`);
     assert.ok(ch.stages.length > 0);

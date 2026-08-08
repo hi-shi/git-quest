@@ -1,6 +1,7 @@
 // ステージ進行のロジック。UI からもテストからも同じ経路で使う。
 
 import { runLine } from './engine/shell.js';
+import { cwdRel, inRepo } from './engine/paths.js';
 import { buildStage, findStage, ALL_STAGES, stageIndex } from './stages/index.js';
 
 /**
@@ -25,6 +26,10 @@ export function execute(session, line) {
   const trimmed = line.trim();
   ctx.history.push(trimmed);
 
+  // 実行前の居場所。「どこで打ったか」を判定に使うため先に控える。
+  const whereBefore = cwdRel(repo);
+  const inRepoBefore = inRepo(repo);
+
   const result = runLine(repo, trimmed, {
     remoteFactory: () => ctx.remote,
   });
@@ -33,6 +38,8 @@ export function execute(session, line) {
   if (/^git push/.test(trimmed) && !result.ok && /non-fast-forward/.test(result.out)) {
     ctx.rejectedPush = true;
   }
+
+  recordWhere(session, trimmed, result, { whereBefore, inRepoBefore });
 
   // evaluate() が session.cleared を書き換えるので、比較用の値は必ず先に取っておく
   const { newlyDone, newlyCleared } = revalidate(session);
@@ -51,6 +58,45 @@ export function revalidate(session) {
     newlyDone: session.goalState.map((v, i) => (v && !before[i] ? i : -1)).filter((i) => i >= 0),
     newlyCleared: session.cleared && !wasCleared,
   };
+}
+
+/**
+ * 「どこで何をしたか」を記録する。
+ * 現在地の章の判定はコマンド名だけでは足りず、打った場所が要る。
+ */
+function recordWhere(session, line, result, { whereBefore, inRepoBefore }) {
+  const { repo, ctx } = session;
+  const here = cwdRel(repo);
+
+  // 訪れた場所の履歴
+  ctx.cwdHistory = ctx.cwdHistory || [whereBefore];
+  if (here !== ctx.cwdHistory[ctx.cwdHistory.length - 1]) ctx.cwdHistory.push(here);
+  repo.cwdHistory = ctx.cwdHistory; // ステージ判定から repo 経由でも見えるように
+
+  ctx.visited = ctx.visited || [];
+  if (here !== null && here !== '' && !ctx.visited.includes(here)) ctx.visited.push(here);
+
+  // その場所で ls を打ったか
+  if (/^ls\b/.test(line) && result.ok) {
+    ctx.lsIn = ctx.lsIn || [];
+    const at = whereBefore;
+    if (at !== null && !ctx.lsIn.includes(at)) ctx.lsIn.push(at);
+  }
+
+  // リポジトリの外に出たか / 外で git が失敗したか / 戻って成功したか
+  if (!inRepo(repo)) ctx.wasOutsideRepo = true;
+  if (/^git\s/.test(line) && !inRepoBefore && !result.ok && /not a git repository/.test(result.out)) {
+    ctx.gitFailedOutside = true;
+  }
+  if (/^git status/.test(line) && inRepoBefore && result.ok && ctx.gitFailedOutside) {
+    ctx.gitOkAfterReturn = true;
+  }
+
+  // サブディレクトリから add したか
+  if (/^git add\b/.test(line) && result.ok && whereBefore) ctx.addedFromSub = true;
+
+  // 入れ子リポジトリの作成を止められたか
+  if (/^git init\b/.test(line) && !result.ok && /入れ子/.test(result.out)) ctx.blockedInit = true;
 }
 
 function evaluate(session) {

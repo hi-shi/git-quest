@@ -1,7 +1,7 @@
-// Service Worker。アプリシェルを precache して、電波が無くても第1〜6章が遊べるようにする。
-// 第7章だけは GitHub API を叩くのでネットワークが要る。
+// Service Worker。アプリシェルを precache して、電波が無くても第1〜7章が遊べるようにする。
+// 第8章だけは GitHub API を叩くのでネットワークが要る。
 
-const CACHE = 'git-quest-v1';
+const CACHE = 'git-quest-v2';
 
 const SHELL = [
   './',
@@ -19,6 +19,7 @@ const SHELL = [
   './js/engine/commands.js',
   './js/engine/shell.js',
   './js/engine/graph.js',
+  './js/engine/paths.js',
   './js/ui/terminal.js',
   './js/ui/graphview.js',
   './js/ui/filesview.js',

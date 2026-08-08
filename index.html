@@ -38,6 +38,11 @@
       <section id="view-terminal" class="view is-active" aria-label="ターミナル">
         <div id="term-output" class="term-output" role="log"></div>
         <div id="chips" class="chips" aria-label="よく使うコマンド"></div>
+        <!-- 現在地。git は「どこで打ったか」で結果が変わるので常に見せる -->
+        <div id="cwd-bar" class="cwd-bar">
+          <span id="cwd-path" class="cwd-path"></span>
+          <span id="cwd-badge" class="cwd-badge"></span>
+        </div>
         <form id="term-form" autocomplete="off">
           <span class="prompt">$</span>
           <input

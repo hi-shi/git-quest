@@ -7,6 +7,7 @@
 
 import { createRepo, initRepo, headCommit, currentBranch, readCommit, status, resolveRev, isAncestor, commitTree, readBlob, listBranches, ancestors } from '../engine/repo.js';
 import { runLine } from '../engine/shell.js';
+import { cwdRel, inRepo } from '../engine/paths.js';
 
 /**
  * setup 用: コマンド列を流す。想定外の失敗は気づけるように投げる。
@@ -192,11 +193,197 @@ const ch1 = {
   ],
 };
 
+
+// =================================================================== 現在地の章
+
+const chCwd = {
+  id: 'chcwd',
+  title: '第2章 いま どこにいるか',
+  subtitle: 'pwd / cd / ls — リポジトリのルートとサブディレクトリ',
+  blurb:
+    'git は「今いる場所」で結果が変わります。事故の多くはコマンドを間違えたのではなく、打った場所を間違えたことで起きます。',
+  stages: [
+    {
+      id: 'cwd-1',
+      title: '現在地を確かめる',
+      intro:
+        'このプロジェクトには src と docs というフォルダがあります。\n中に入って、また戻ってきてください。画面下の「📁」の表示が変わるのを見てみましょう。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "# メモ帳アプリ" > README.md
+          mkdir src
+          echo "console.log('hi')" > src/app.js
+          mkdir docs
+          echo "使い方" > docs/guide.md
+          git add .
+          git commit -m "最初のコミット"
+        `);
+      },
+      goals: [
+        { text: 'pwd で今いる場所を確かめる', check: (r, ctx) => usedCommand(ctx, /^pwd/) },
+        { text: 'src フォルダの中に入る', check: (r, ctx) => ctx.visited && ctx.visited.includes('src') },
+        {
+          text: 'src の中で ls を実行して、中身が違うことを確かめる',
+          check: (r, ctx) => (ctx.lsIn || []).includes('src'),
+        },
+        { text: 'リポジトリのルートに戻る', check: (r) => cwdRel(r) === '' && (r.cwdHistory || []).length > 1 },
+      ],
+      hints: [
+        '`pwd` は「今いる場所」を絶対パスで表示します。',
+        '`cd src` で中に入れます。入ったら `ls` を打つと、ルートとは違うものが並びます。',
+        '`cd ..` で1つ上に戻れます。`..` は「親フォルダ」という意味です。',
+      ],
+      teach: [
+        '`pwd` = print working directory。「今どこにいるか」を出すコマンドです。',
+        '`cd` で移動すると、それ以降のコマンドはすべてその場所を基準に動きます。',
+        '画面下の 📁 が現在地です。「リポジトリのルート」か「ルートの下」かが常に出ているので、コマンドを打つ前に見る癖をつけてください。',
+      ],
+      wantedCommands: [/^pwd/, /^cd src/, /^ls/, /^cd \.\./],
+    },
+    {
+      id: 'cwd-2',
+      title: 'リポジトリの外では git は使えない',
+      intro:
+        'git が使えるのは「.git のあるフォルダとその下」だけです。\n一歩外に出ると何もできません。実際に出て、確かめてから戻ってきてください。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "# 家計簿" > README.md
+          git add .
+          git commit -m "最初のコミット"
+        `);
+      },
+      goals: [
+        {
+          text: 'リポジトリの外（ホーム）に出る',
+          check: (r, ctx) => ctx.wasOutsideRepo === true,
+        },
+        {
+          text: '外で git status を打って、失敗することを確かめる',
+          check: (r, ctx) => ctx.gitFailedOutside === true,
+        },
+        {
+          text: 'リポジトリに戻って git status が通ることを確かめる',
+          check: (r, ctx) => inRepo(r) && ctx.gitOkAfterReturn === true,
+        },
+      ],
+      hints: [
+        '`cd ..` でプロジェクトフォルダの外（ホーム）に出られます。',
+        'そこで `git status` を打つと `not a git repository` になります。エラーに「いる場所」も出ます。',
+        '`cd my-project` で戻れます。戻ってからもう一度 `git status` を打ってみてください。',
+      ],
+      teach: [
+        'git は今いる場所から**上に向かって** `.git` を探します。見つからなければ「リポジトリではない」と言います。',
+        '`not a git repository` が出たら、コマンドの綴りではなく **今どこにいるか** をまず疑ってください。`pwd` の出番です。',
+        '逆に言えば、リポジトリの中ならどのサブフォルダからでも git は使えます。',
+      ],
+      wantedCommands: [/^cd/, /^git status/],
+    },
+    {
+      id: 'cwd-3',
+      title: '`git add .` の「.」はどこ？',
+      intro:
+        'ここが一番の事故ポイントです。\nsrc の中で `git add .` を打つと、何が入って何が入らないでしょうか。まず試してから、全部入れてください。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "# ブログ" > README.md
+          git add .
+          git commit -m "最初のコミット"
+          echo "設定を追加" > config.json
+          mkdir src
+          echo "本体" > src/main.js
+          echo "部品" > src/parts.js
+          cd src
+        `);
+      },
+      goals: [
+        {
+          text: 'src の中で git add . を実行する',
+          check: (r, ctx) => ctx.addedFromSub === true,
+        },
+        {
+          text: 'git status で config.json が入っていないことに気づく',
+          check: (r, ctx) => usedCommand(ctx, /^git status/),
+        },
+        {
+          text: 'config.json も含めて、全部をステージに載せる',
+          check: (r) => {
+            const staged = status(r).staged.map((f) => f.path);
+            return (
+              staged.includes('config.json') &&
+              staged.includes('src/main.js') &&
+              staged.includes('src/parts.js')
+            );
+          },
+        },
+      ],
+      hints: [
+        'まず `git add .` を打ってから `git status` を見てください。src の中のものだけが入っています。',
+        '`.` は「今いるフォルダ」という意味です。src にいるなら src の下だけが対象になります。',
+        'ルートに戻って（`cd ..`）から `git add .` を打つか、その場から `git add -A` を打てば全部入ります。',
+      ],
+      teach: [
+        '`git add .` の `.` は **今いるフォルダ**。サブディレクトリで打つと、その下しか入りません。',
+        '`git add -A` はどこで打っても**リポジトリ全体**が対象です。ここが `.` との決定的な違いです。',
+        '「add したのにコミットに入っていない」の多くはこれが原因です。**commit の前に必ず `git status`** を見る習慣をつけてください。',
+      ],
+      wantedCommands: [/^git add/, /^git status/],
+    },
+    {
+      id: 'cwd-4',
+      title: 'うっかり git init',
+      intro:
+        'サブディレクトリで `git init` を打ってしまうと、リポジトリの中にリポジトリができます。\n外側の git からは中身が見えなくなり、とても分かりにくい事故になります。試してみてください。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "# 会社サイト" > README.md
+          git add .
+          git commit -m "最初のコミット"
+          mkdir themes
+          echo "テーマ" > themes/dark.css
+          cd themes
+        `);
+      },
+      goals: [
+        {
+          text: 'themes の中で git init を試して、止められることを確かめる',
+          check: (r, ctx) => ctx.blockedInit === true,
+        },
+        {
+          text: 'リポジトリのルートがどこかを確かめる',
+          check: (r, ctx) => usedCommand(ctx, /^(pwd|git status)/),
+        },
+        {
+          text: 'ルートに戻って themes をコミットする',
+          check: (r) => {
+            const tree = commitTree(r, headCommit(r));
+            return 'themes/dark.css' in tree;
+          },
+        },
+      ],
+      hints: [
+        'まず `git init` を打ってみてください。このアプリは止めてくれます（本物の git は止めてくれません）。',
+        '`pwd` で今いる場所、`git status` でリポジトリのルートが分かります。',
+        '`cd ..` でルートに戻り、`git add .` → `git commit -m "テーマを追加"`。',
+      ],
+      teach: [
+        '**本物の git は入れ子リポジトリを黙って作ります。** これが厄介なところです。',
+        '入れ子ができると、外側から見て中身が丸ごと1つの塊のように扱われ、変更が追えなくなります。',
+        '`git init` を打つ前には必ず `pwd` を。「新しいプロジェクトを始めるとき以外は init しない」と覚えておくと安全です。',
+      ],
+      wantedCommands: [/^git init/, /^cd \.\./, /^git commit/],
+    },
+  ],
+};
+
 // =================================================================== 第2章
 
 const ch2 = {
   id: 'ch2',
-  title: '第2章 やり直しの術',
+  title: '第3章 やり直しの術',
   subtitle: 'diff / restore / reset / --amend / .gitignore',
   blurb: 'git を怖がる一番の理由は「間違えたときに戻せるか分からない」こと。ここで戻し方を全部覚えます。',
   stages: [
@@ -455,7 +642,7 @@ const ch2 = {
 
 const ch3 = {
   id: 'ch3',
-  title: '第3章 ブランチ',
+  title: '第4章 ブランチ',
   subtitle: 'switch -c / merge / fast-forward / branch -d',
   blurb: '本番を壊さずに実験するための仕組み。グラフ画面を開きながら進めると、何が起きているか一目で分かります。',
   stages: [
@@ -659,7 +846,7 @@ const ch3 = {
 
 const ch4 = {
   id: 'ch4',
-  title: '第4章 コンフリクト',
+  title: '第5章 コンフリクト',
   subtitle: '衝突の発生と解消 / merge --abort',
   blurb: '一番怖がられる場面。でも仕組みが分かれば、ただの「どっちを残すか選ぶ作業」です。',
   stages: [
@@ -824,7 +1011,7 @@ const ch4 = {
 
 const ch5 = {
   id: 'ch5',
-  title: '第5章 歴史を整える',
+  title: '第6章 歴史を整える',
   subtitle: 'rebase / cherry-pick / stash / revert',
   blurb: 'マージ以外の合流のしかた。使い分けができると一人前です。',
   stages: [
@@ -1122,7 +1309,7 @@ const REMOTE_URL = 'https://github.com/team/awesome-app.git';
 
 const ch6 = {
   id: 'ch6',
-  title: '第6章 リモート',
+  title: '第7章 リモート',
   subtitle: 'clone / fetch / pull / push / 追跡ブランチ',
   blurb: '手元とサーバーは別のリポジトリ。この章では、両者がどう同期するのかを追いかけます。',
   stages: [
@@ -1310,7 +1497,7 @@ const ch6 = {
   ],
 };
 
-export const CHAPTERS = [ch1, ch2, ch3, ch4, ch5, ch6];
+export const CHAPTERS = [ch1, chCwd, ch2, ch3, ch4, ch5, ch6];
 
 /** 全ステージを1本のリストに。 */
 export const ALL_STAGES = CHAPTERS.flatMap((ch) =>

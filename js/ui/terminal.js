@@ -1,6 +1,7 @@
 // ターミナル画面。出力の描画と、スマホで打ちやすくするための入力補助。
 
 import { listBranches, listRemoteBranches, status } from '../engine/repo.js';
+import { displayPath, inRepo, repoDirAbs, cwdInRepo, listDir, cwdRel } from '../engine/paths.js';
 import { HELP } from '../engine/commands.js';
 import { SHELL_COMMANDS } from '../engine/shell.js';
 
@@ -25,6 +26,8 @@ export class Terminal {
     this.form = els.form;
     this.input = els.input;
     this.chipsEl = els.chips;
+    this.cwdPathEl = els.cwdPath;
+    this.cwdBadgeEl = els.cwdBadge;
     this.onSubmit = onSubmit;
     this.history = [];
     this.histPos = -1;
@@ -92,7 +95,20 @@ export class Terminal {
     } else if (parts[0] === 'git' && parts.length === 2) {
       pool.push(...GIT_SUBCOMMANDS);
     } else if (repo) {
-      pool.push(...listBranches(repo), ...listRemoteBranches(repo), ...Object.keys(repo.workdir));
+      // cd の候補は今いるフォルダの中のフォルダ名
+      if (parts[0] === 'cd') {
+        pool.push(...listDir(repo, repo.cwd).dirs, '..', '~');
+      } else {
+        const here = cwdRel(repo);
+        const { dirs, files } = listDir(repo, repo.cwd);
+        pool.push(
+          ...listBranches(repo),
+          ...listRemoteBranches(repo),
+          ...files,
+          ...dirs.map((d) => d + '/')
+        );
+        void here;
+      }
     }
     return [...new Set(pool)].filter((c) => c.startsWith(last) && c !== last).sort();
   }
@@ -100,6 +116,33 @@ export class Terminal {
   /** グラフ／補完のために現在のリポジトリを渡しておく。 */
   bind(repo) {
     this.repo = repo;
+    this.renderCwd();
+  }
+
+  /**
+   * 入力欄の上に「いまどこにいるか」を出す。
+   * リポジトリのルートか、その下か、外かがひと目で分かるようにする。
+   */
+  renderCwd() {
+    const repo = this.repo;
+    if (!repo || !this.cwdPathEl) return;
+    this.cwdPathEl.textContent = displayPath(repo);
+
+    const badge = this.cwdBadgeEl;
+    if (!badge) return;
+    if (!inRepo(repo)) {
+      badge.className = 'cwd-badge outside';
+      badge.textContent = repo.gitRoot === null ? 'リポジトリなし' : 'リポジトリの外';
+      return;
+    }
+    const here = cwdInRepo(repo);
+    if (!here) {
+      badge.className = 'cwd-badge root';
+      badge.textContent = 'リポジトリのルート';
+    } else {
+      badge.className = 'cwd-badge sub';
+      badge.textContent = 'ルートの下（' + here + '）';
+    }
   }
 
   clear() {
@@ -171,6 +214,16 @@ export class Terminal {
 
     const div = document.createElement('div');
     div.className = 'term-block';
+
+    // どこで打ったコマンドなのかを1行添える。
+    // 同じコマンドでも場所によって結果が変わるので、後から見返せるようにする。
+    if (this.repo) {
+      const where = document.createElement('div');
+      where.className = 'term-where';
+      where.textContent = displayPath(this.repo);
+      div.appendChild(where);
+    }
+
     const p = document.createElement('div');
     p.className = 'term-cmd mono';
     div.appendChild(p);
@@ -313,6 +366,7 @@ function suggestChips(repo, stage) {
 
   if (!repo || !repo.initialized) {
     add('git init', 'git init', { accent: true });
+    add('pwd');
     add('ls');
     add('echo "..." > file', 'echo "" > ', { run: false });
     add('help');
@@ -320,7 +374,23 @@ function suggestChips(repo, stage) {
   }
 
   const s = status(repo);
+
+  // リポジトリの外にいるなら、まず戻る手段を最優先で出す
+  if (!inRepo(repo)) {
+    const root = repoDirAbs(repo);
+    if (root) add('cd ' + displayPath(repo, root), 'cd ' + displayPath(repo, root), { accent: true });
+    add('pwd');
+    add('ls');
+    return chips;
+  }
+
   add('git status', 'git status', { accent: true });
+
+  // 現在地まわり。サブディレクトリにいるときは戻る手段を目立たせる
+  add('pwd');
+  if (cwdInRepo(repo)) add('cd ..', 'cd ..', { accent: true });
+  const here = listDir(repo, repo.cwd).dirs.filter((d) => !d.startsWith('.'));
+  if (here.length) add('cd ' + here[0]);
 
   if (Object.keys(repo.conflicts).length) {
     const first = Object.keys(repo.conflicts)[0];

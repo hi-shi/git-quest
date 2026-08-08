@@ -183,7 +183,7 @@ export function renderChapterList(listEl, progressEl, { currentId, isDone, onPic
   block.className = 'ch-block';
   const title = document.createElement('div');
   title.className = 'ch-title';
-  title.textContent = '第7章 GitHub 実践';
+  title.textContent = '第8章 GitHub 実践';
   block.appendChild(title);
   const sub = document.createElement('div');
   sub.className = 'ch-sub';

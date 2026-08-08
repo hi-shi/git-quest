@@ -33,21 +33,47 @@ import {
   refreshIgnore,
   isIgnored,
   createRepo,
+  repoWorkdir,
+  toWorkKey,
+  outsideRepo,
 } from './repo.js';
+import {
+  inRepo,
+  cwdRel,
+  cwdInRepo,
+  displayPath,
+  displayRepoPath,
+  repoDirAbs,
+  toAbsolute,
+  toProjectRel,
+  projectDir,
+  isDir,
+} from './paths.js';
 import { mergeText, formatDiff, hasConflictMarkers } from './diff.js';
 import { parseFlags } from './parser.js';
 
 const ok = (out = '', hint) => ({ ok: true, out, hint });
 const err = (out, hint) => ({ ok: false, out, hint });
 
+/**
+ * git コマンドが使えるか。本物と同じく「今いる場所から上に .git を探す」。
+ * リポジトリの外で打っていることに気づけるよう、居場所をエラーに含める。
+ */
 function needRepo(repo) {
-  if (!repo.initialized) {
+  if (inRepo(repo)) return null;
+
+  const where = displayPath(repo);
+  if (repo.gitRoot === null || repo.gitRoot === undefined) {
     return err(
-      'fatal: not a git repository (or any of the parent directories): .git',
+      `fatal: not a git repository (or any of the parent directories): .git\n（いる場所: ${where}）`,
       'まず `git init` でリポジトリを作りましょう。'
     );
   }
-  return null;
+  // リポジトリはあるが、その外にいる
+  return err(
+    `fatal: not a git repository (or any of the parent directories): .git\n（いる場所: ${where}）`,
+    `リポジトリは ${displayPath(repo, repoDirAbs(repo))} にあります。\`cd ${displayPath(repo, repoDirAbs(repo))}\` で中に入ってから実行してください。`
+  );
 }
 
 function needCommit(repo) {
@@ -63,13 +89,38 @@ function needCommit(repo) {
 // ---------------------------------------------------------------- init / config
 
 function cmdInit(repo) {
-  if (repo.initialized) return ok('Reinitialized existing Git repository in /playground/.git/');
-  const fresh = initRepo({ defaultBranch: repo.defaultBranch });
-  fresh.workdir = repo.workdir;
-  Object.assign(repo, fresh);
+  const here = cwdRel(repo);
+  if (here === null) {
+    return err(
+      `fatal: このフォルダにはリポジトリを作れません（いる場所: ${displayPath(repo)}）`,
+      'プロジェクトフォルダの中に移動してから実行してください。'
+    );
+  }
+
+  if (repo.gitRoot === here) {
+    return ok(
+      `Reinitialized existing Git repository in ${displayPath(repo)}/.git/`,
+      'ここには既にリポジトリがあります。'
+    );
+  }
+
+  // 既にリポジトリの中にいるのに init するのは、たいてい事故（入れ子リポジトリ）
+  if (inRepo(repo)) {
+    const outer = displayPath(repo, repoDirAbs(repo));
+    return err(
+      `ここは既に ${outer} のリポジトリの中です。\n入れ子のリポジトリを作ると、外側の git からは中身が見えなくなります。`,
+      `本当に作りたいのでなければ、そのまま外側のリポジトリを使ってください。今いる場所は \`pwd\` で確認できます。`
+    );
+  }
+
+  repo.gitRoot = here;
+  repo.initialized = true;
+  repo.index = Object.create(null);
+  repo.HEAD = { type: 'branch', ref: 'refs/heads/' + repo.defaultBranch };
   refreshIgnore(repo);
   return ok(
-    `Initialized empty Git repository in /playground/.git/\n（.git ができました。ここからこのフォルダの変更が記録できます）`
+    `Initialized empty Git repository in ${displayPath(repo)}/.git/\n（.git ができました。ここが「リポジトリのルート」です）`,
+    here === '' ? undefined : 'プロジェクトの直下ではない場所に作りました。意図したものか確認してください。'
   );
 }
 
@@ -94,16 +145,25 @@ function cmdStatus(repo, argv) {
 
   if (short) {
     const lines = [];
-    for (const f of s.conflicted) lines.push('UU ' + f);
-    for (const f of s.staged) lines.push(kindLetter(f.kind) + ' ' + f.path);
-    for (const f of s.unstaged) lines.push(' ' + kindLetter(f.kind) + ' ' + f.path);
-    for (const f of s.untracked) lines.push('?? ' + f);
+    for (const f of s.conflicted) lines.push('UU ' + displayRepoPath(repo, f));
+    for (const f of s.staged) lines.push(kindLetter(f.kind) + ' ' + displayRepoPath(repo, f.path));
+    for (const f of s.unstaged) lines.push(' ' + kindLetter(f.kind) + ' ' + displayRepoPath(repo, f.path));
+    for (const f of s.untracked) lines.push('?? ' + displayRepoPath(repo, f));
     return ok(lines.join('\n') || '');
   }
 
   const out = [];
   const br = currentBranch(repo);
   out.push(br ? `On branch ${br}` : `HEAD detached at ${(headCommit(repo) || '').slice(0, 7)}`);
+
+  // サブディレクトリにいるときは、それが分かるように明示する。
+  // 本物の git も相対パスで表示するので、ここで気づけるかどうかが分かれ目。
+  const here = cwdInRepo(repo);
+  if (here) {
+    out.push(
+      `（いま ${displayPath(repo)} にいます。パスはここからの相対で表示され、\`git add .\` もここから下だけが対象です）`
+    );
+  }
 
   const upstream = br && repo.refs['refs/remotes/origin/' + br] !== undefined ? 'origin/' + br : null;
   if (upstream) {
@@ -122,11 +182,11 @@ function cmdStatus(repo, argv) {
 
   if (s.conflicted.length) {
     out.push('', 'Unmerged paths:', '  (use "git add <file>..." to mark resolution)');
-    for (const f of s.conflicted) out.push(`\tboth modified:   ${f}`);
+    for (const f of s.conflicted) out.push(`\tboth modified:   ${displayRepoPath(repo, f)}`);
   }
   if (s.staged.length) {
     out.push('', 'Changes to be committed:', '  (use "git restore --staged <file>..." to unstage)');
-    for (const f of s.staged) out.push(`\t${kindLabel(f.kind)}${f.path}`);
+    for (const f of s.staged) out.push(`\t${kindLabel(f.kind)}${displayRepoPath(repo, f.path)}`);
   }
   if (s.unstaged.length) {
     out.push(
@@ -134,11 +194,11 @@ function cmdStatus(repo, argv) {
       'Changes not staged for commit:',
       '  (use "git add <file>..." to update what will be committed)'
     );
-    for (const f of s.unstaged) out.push(`\t${kindLabel(f.kind)}${f.path}`);
+    for (const f of s.unstaged) out.push(`\t${kindLabel(f.kind)}${displayRepoPath(repo, f.path)}`);
   }
   if (s.untracked.length) {
     out.push('', 'Untracked files:', '  (use "git add <file>..." to include in what will be committed)');
-    for (const f of s.untracked) out.push(`\t${f}`);
+    for (const f of s.untracked) out.push(`\t${displayRepoPath(repo, f)}`);
   }
   if (!s.staged.length && !s.unstaged.length && !s.untracked.length && !s.conflicted.length) {
     out.push('', 'nothing to commit, working tree clean');
@@ -155,20 +215,49 @@ function kindLetter(kind) {
 
 // ---------------------------------------------------------------- add / restore
 
+/**
+ * pathspec を解決する。**今いる場所からの相対**として扱うのが肝心なところ。
+ * サブディレクトリで `git add .` を打つと、その下しか対象にならない。
+ * @param pool リポジトリ相対パスの候補
+ */
 function matchPaths(repo, patterns, pool) {
+  const here = cwdInRepo(repo) || ''; // リポジトリルートから見た現在地
+  const under = (p) => (here === '' ? true : p === here || p.startsWith(here + '/'));
+
   const out = new Set();
   for (const pat of patterns) {
-    if (pat === '.' || pat === '-A' || pat === '*') {
+    // `.` と `-A` の違い: `.` は今いる場所より下だけ、`-A` はリポジトリ全体
+    if (pat === '-A' || pat === ':/') {
       for (const p of pool) out.add(p);
       continue;
     }
+    if (pat === '.' || pat === '*' || pat === './') {
+      for (const p of pool) if (under(p)) out.add(p);
+      continue;
+    }
+
+    // それ以外は今いる場所からの相対パスとして解釈する
+    const abs = toAbsolute(repo, pat);
+    const projRel = toProjectRel(repo, abs);
+    if (projRel === null) continue;
+    const target = repo.gitRoot
+      ? projRel === repo.gitRoot
+        ? ''
+        : projRel.startsWith(repo.gitRoot + '/')
+          ? projRel.slice(repo.gitRoot.length + 1)
+          : null
+      : projRel;
+    if (target === null) continue;
+
     if (pat.includes('*')) {
-      const re = new RegExp('^' + pat.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+      const re = new RegExp(
+        '^' + target.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$'
+      );
       for (const p of pool) if (re.test(p)) out.add(p);
       continue;
     }
-    if (pool.includes(pat)) out.add(pat);
-    else for (const p of pool) if (p.startsWith(pat + '/')) out.add(p);
+    if (pool.includes(target)) out.add(target);
+    else for (const p of pool) if (p.startsWith(target + '/')) out.add(p);
   }
   return [...out];
 }
@@ -177,11 +266,14 @@ function cmdAdd(repo, argv) {
   const guard = needRepo(repo);
   if (guard) return guard;
   const { flags, args } = parseFlags(argv);
-  const patterns = args.length ? args : flags['-A'] || flags['--all'] ? ['.'] : [];
+  // -A / --all は（pathspec 無しなら）リポジトリ全体が対象。
+  // サブディレクトリで打った `git add .` が「その下だけ」なのと対照的で、
+  // ここの違いが分かっていないと「入れたつもりが入っていない」事故になる。
+  const patterns = args.length ? args : flags['-A'] || flags['--all'] ? [':/'] : [];
   if (!patterns.length) {
     return err('Nothing specified, nothing added.', 'ファイル名か `.`（全部）を指定してください。例: `git add .`');
   }
-  const pool = [...new Set([...Object.keys(repo.workdir), ...Object.keys(repo.index)])];
+  const pool = [...new Set([...Object.keys(repoWorkdir(repo)), ...Object.keys(repo.index)])];
   const targets = matchPaths(repo, patterns, pool).filter(
     (p) => !isIgnored(repo, p) || p in repo.index
   );
@@ -191,11 +283,12 @@ function cmdAdd(repo, argv) {
       'そのファイルは見つかりません。`ls` で確認してみましょう。'
     );
   }
+  const work = repoWorkdir(repo);
   const resolved = [];
   for (const p of targets) {
-    if (p in repo.workdir) {
+    if (p in work) {
       if (repo.conflicts[p]) {
-        if (hasConflictMarkers(repo.workdir[p])) {
+        if (hasConflictMarkers(work[p])) {
           return err(
             `error: '${p}' にコンフリクトマーカーが残っています`,
             '<<<<<<< ======= >>>>>>> の行を消して、残したい内容だけにしてから add してください。'
@@ -204,13 +297,14 @@ function cmdAdd(repo, argv) {
         delete repo.conflicts[p];
         resolved.push(p);
       }
-      repo.index[p] = writeBlob(repo, repo.workdir[p]);
+      repo.index[p] = writeBlob(repo, work[p]);
     } else {
       delete repo.index[p]; // 消えたファイルの削除をステージ
     }
   }
   refreshIgnore(repo);
-  const msg = [`${targets.length} 件をステージしました: ${targets.join(', ')}`];
+  const shown = targets.map((t) => displayRepoPath(repo, t));
+  const msg = [`${targets.length} 件をステージしました: ${shown.join(', ')}`];
   if (resolved.length) msg.push(`コンフリクト解消済み: ${resolved.join(', ')}`);
   return ok(msg.join('\n'), 'ステージ（index）は「次のコミットに入れる箱」です。`git status` で確認を。');
 }
@@ -222,7 +316,7 @@ function cmdRestore(repo, argv) {
   if (!args.length) return err('fatal: you must specify path(s) to restore');
   const staged = flags['--staged'] || flags['-S'];
   const head = commitTree(repo, headCommit(repo));
-  const pool = [...new Set([...Object.keys(repo.workdir), ...Object.keys(repo.index), ...Object.keys(head)])];
+  const pool = [...new Set([...Object.keys(repoWorkdir(repo)), ...Object.keys(repo.index), ...Object.keys(head)])];
   const targets = matchPaths(repo, args, pool);
   if (!targets.length) return err(`error: pathspec '${args[0]}' did not match any file(s) known to git`);
 
@@ -233,8 +327,8 @@ function cmdRestore(repo, argv) {
       else delete repo.index[p];
     } else {
       // 作業ツリーを index の状態に戻す
-      if (p in repo.index) repo.workdir[p] = readBlob(repo, repo.index[p]) ?? '';
-      else delete repo.workdir[p];
+      if (p in repo.index) repo.workdir[toWorkKey(repo, p)] = readBlob(repo, repo.index[p]) ?? '';
+      else delete repo.workdir[toWorkKey(repo, p)];
     }
   }
   refreshIgnore(repo);
@@ -266,8 +360,9 @@ function cmdCommit(repo, argv) {
   }
 
   if (all) {
+    const workAll = repoWorkdir(repo);
     for (const p of Object.keys(repo.index)) {
-      if (p in repo.workdir) repo.index[p] = writeBlob(repo, repo.workdir[p]);
+      if (p in workAll) repo.index[p] = writeBlob(repo, workAll[p]);
       else delete repo.index[p];
     }
   }
