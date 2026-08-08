@@ -635,6 +635,103 @@ const ch2 = {
       ],
       wantedCommands: [/^(echo|touch).*\.gitignore/],
     },
+    {
+      id: 'ch2-7',
+      title: '追跡をやめる（.gitignore の落とし穴）',
+      intro:
+        'うっかり .env（パスワードの入ったファイル）をコミットしてしまいました。\n.gitignore に書けば消える…と思いきや、**既に追跡されているファイルには効きません**。\n追跡をやめさせてください。ファイル自体は手元に残す必要があります。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "console.log('app')" > app.js
+          echo "DB_PASSWORD=hunter2" > .env
+          git add .
+          git commit -m "初回コミット（.env も入ってしまった）"
+        `);
+      },
+      goals: [
+        {
+          text: '.gitignore に .env を書く',
+          check: (r) => (r.workdir['.gitignore'] || '').includes('.env'),
+        },
+        {
+          text: '.env の追跡をやめる（ファイルは消さない）',
+          check: (r) => !('.env' in r.index) && '.env' in r.workdir,
+        },
+        {
+          text: 'コミットして、.env が git から見えなくなる',
+          check: (r) => {
+            const tree = commitTree(r, headCommit(r));
+            const s = status(r);
+            return (
+              !('.env' in tree) &&
+              !s.untracked.includes('.env') &&
+              !s.unstaged.some((f) => f.path === '.env') &&
+              '.env' in r.workdir
+            );
+          },
+        },
+      ],
+      hints: [
+        'まず `echo ".env" > .gitignore` で無視する設定を書きます。ただし、これだけでは効きません。',
+        '`git rm --cached .env` で「追跡だけ」やめます。`--cached` を付けないとファイルごと消えるので注意。',
+        '`git add .gitignore` → `git commit -m ".env の追跡をやめる"` で確定します。',
+      ],
+      teach: [
+        '.gitignore が効くのは **まだ追跡されていないファイル** だけです。一度コミットしたものは対象外。',
+        '`git rm --cached <file>` = index から外すが、ファイルは手元に残す。この組み合わせが定番の直し方。',
+        '**注意**: 一度コミットしたパスワードは、追跡をやめても**過去のコミットには残り続けます**。本当に漏れた秘密は、必ず作り直してください（無効化して新しいものを発行する）。',
+      ],
+      wantedCommands: [/^git rm --cached/, /^git commit/],
+    },
+    {
+      id: 'ch2-8',
+      title: '消したコミットを取り戻す（reflog）',
+      intro:
+        '`git reset --hard` で大事なコミットを消してしまいました。\nもう戻せない…ように見えますが、git は HEAD が通ってきた道を覚えています。取り戻してください。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "土台" > base.txt
+          git add .
+          git commit -m "土台を作る"
+          echo "3日かけた機能" > feature.js
+          echo "そのテスト" > feature.test.js
+          git add .
+          git commit -m "検索機能を実装"
+          git reset --hard HEAD~1
+        `);
+      },
+      goals: [
+        {
+          text: 'git reflog で HEAD の履歴を見る',
+          check: (r, ctx) => usedCommand(ctx, /^git reflog/),
+        },
+        {
+          text: '消えたコミットを取り戻す（feature.js が戻る）',
+          check: (r) => 'feature.js' in r.workdir && 'feature.test.js' in r.workdir,
+        },
+        {
+          text: '取り戻した内容が今のブランチから辿れる',
+          check: (r) => {
+            const tree = commitTree(r, headCommit(r));
+            return 'feature.js' in tree;
+          },
+        },
+      ],
+      hints: [
+        'まず `git reflog` を打ってください。「検索機能を実装」の行があるはずです。',
+        '左端の sha か `HEAD@{1}` が、消えたコミットを指しています。',
+        '`git reset --hard HEAD@{1}` で戻せます。`git switch -c rescue HEAD@{1}` で別ブランチとして救う手もあります。',
+      ],
+      teach: [
+        '`git reflog` は **HEAD が通ってきた場所の履歴**です。コミットは reset や branch -D では消えず、しばらく残っています。',
+        'つまり「コミットさえしてあれば、たいていのやらかしは取り戻せる」。これが git を怖がらずに使うための一番の安心材料です。',
+        '逆に **コミットしていない変更は reflog にも残りません**。不安な作業の前ほど、こまめにコミットしてください。',
+        '（reflog の記録は数週間で消えます。永久ではありません）',
+      ],
+      wantedCommands: [/^git reflog/, /^git (reset|switch)/],
+    },
   ],
 };
 
@@ -838,6 +935,57 @@ const ch3 = {
         '`-D` は問答無用。コミットが迷子になります（しばらくは `git reflog` で救えますが、当てにしないこと）。',
       ],
       wantedCommands: [/^git branch -d/],
+    },
+    {
+      id: 'ch3-5',
+      title: '迷子のコミット（detached HEAD）',
+      intro:
+        '過去のコミットを見に行ったまま作業してコミットしてしまいました。\nいま HEAD はどのブランチにも乗っていません（分離 HEAD）。このままブランチに戻ると、この作業は迷子になります。\n救い出してください。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "v1" > app.js
+          git add .
+          git commit -m "初版"
+          echo "v2" > app.js
+          git add .
+          git commit -m "改良版"
+          git checkout HEAD~1
+          echo "分離HEADで書いた大事な修正" > hotfix.js
+          git add .
+          git commit -m "重要なバグ修正"
+        `);
+      },
+      goals: [
+        {
+          text: '今の状態を確認する（分離 HEAD であることに気づく）',
+          check: (r, ctx) => usedCommand(ctx, /^git (status|log|branch)/),
+        },
+        {
+          text: 'この作業にブランチを付けて救い出す',
+          check: (r) => {
+            if (r.HEAD.type !== 'branch') return false;
+            const tree = commitTree(r, headCommit(r));
+            return 'hotfix.js' in tree;
+          },
+        },
+        {
+          text: 'ブランチ一覧に、救い出したブランチが出る',
+          check: (r) => listBranches(r).length >= 2,
+        },
+      ],
+      hints: [
+        '`git status` を打つと `HEAD detached at ...` と出ます。ブランチ名がありません。',
+        '`git switch -c rescue` で、今いる場所にブランチを付けられます（-c は「作る」）。',
+        'ブランチを付けずに `git switch main` で戻ると、このコミットはどこからも辿れなくなります（reflog でなら救えます）。',
+      ],
+      teach: [
+        '分離 HEAD = HEAD がブランチではなくコミットを直接指している状態。過去を見に行ったときになります。',
+        '**見るだけなら問題ありません。** 問題はそこでコミットしたとき。ブランチが付いていないので、離れた瞬間に迷子になります。',
+        '救い方は簡単で、**離れる前に `git switch -c <名前>`**。離れてしまっても `git reflog` から取り戻せます。',
+        '元に戻るだけなら `git switch main` でOK。「detached HEAD」と出ても慌てないことが大事です。',
+      ],
+      wantedCommands: [/^git (status|log|branch)/, /^git switch -c/],
     },
   ],
 };

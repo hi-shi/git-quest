@@ -1,7 +1,7 @@
 // Service Worker。アプリシェルを precache して、電波が無くても第1〜7章が遊べるようにする。
 // 第8章だけは GitHub API を叩くのでネットワークが要る。
 
-const CACHE = 'git-quest-v2';
+const CACHE = 'git-quest-v3';
 
 const SHELL = [
   './',
@@ -24,6 +24,7 @@ const SHELL = [
   './js/ui/graphview.js',
   './js/ui/filesview.js',
   './js/ui/questview.js',
+  './js/ui/cheatsheet.js',
   './js/stages/index.js',
   './js/real/github.js',
   './js/real/realmode.js',
@@ -38,7 +39,9 @@ self.addEventListener('install', (event) => {
       .open(CACHE)
       // 1つでも失敗すると全部落ちるので、個別に入れる
       .then((cache) => Promise.all(SHELL.map((url) => cache.add(url).catch(() => {}))))
-      .then(() => self.skipWaiting())
+    // ここで skipWaiting しない。新しい版は「待機」させ、
+    // ユーザーが更新ボタンを押したときに初めて切り替える。
+    // 作業中に勝手にリロードされると困るため。
   );
 });
 
@@ -49,6 +52,11 @@ self.addEventListener('activate', (event) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// アプリから「更新して」と言われたら、待機をやめて新しい版に切り替える
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', (event) => {

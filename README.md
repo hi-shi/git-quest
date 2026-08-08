@@ -47,7 +47,8 @@ python3 -m http.server 8000
 | **ファイル** | 「作業ツリー / ステージ / 直前のコミット」の3列比較。`add` と `commit` が何を動かすかが分かります |
 | **クエスト** | いまのステージの目標・ヒント・まとめ |
 
-- 左上の **☰** でステージ一覧。クリア済みのステージにはいつでも戻れます
+- 左上の **☰** でステージ一覧と**逆引きチートシート**（やりたいこと → コマンド）
+- クリア済みのステージにはいつでも戻れます
 - 右上の **↻** でいまのステージをやり直し（何度失敗しても大丈夫です）
 - 進捗はこの端末のブラウザにだけ保存されます
 
@@ -58,6 +59,7 @@ python3 -m http.server 8000
 `branch`（`-d` `-D` `-m` `-v`）`switch`（`-c`）`checkout`（`-b`）`merge`（`--no-ff` `--abort`）`tag`
 `rebase`（`--onto` `--continue` `--abort`）`cherry-pick` `stash`（`push`/`pop`/`apply`/`list`/`drop`）
 `remote`（`add` `-v`）`clone` `fetch` `pull`（`--rebase`）`push`（`-u` `--delete`）`config` `help`
+`reflog`（消したコミットの救出）`rm`（`--cached`）
 
 **シェル**: `cd` `pwd` `ls` `cat` `touch` `rm`（`-r`）`mv` `mkdir` `echo "x" > file`（`>>` で追記）`edit <file>` `clear`
 
@@ -75,14 +77,14 @@ git は「どこで打ったか」で結果が変わります。入力欄の上�
 | --- | --- |
 | 第1章 はじめの一歩 | `init` `add` `commit` `status` `log` — ステージという中継地点 |
 | 第2章 いま どこにいるか | `pwd` `cd` `ls` — リポジトリのルートとサブディレクトリ、`git add .` の落とし穴 |
-| 第3章 やり直しの術 | 2つの `diff` / `restore` / `reset` 3種の違い / `--amend` / `.gitignore` |
-| 第4章 ブランチ | `switch -c` / fast-forward と 3-way マージ / `branch -d` の安全装置 |
+| 第3章 やり直しの術 | 2つの `diff` / `restore` / `reset` 3種 / `--amend` / `.gitignore` の落とし穴 / `reflog` で救出 |
+| 第4章 ブランチ | `switch -c` / fast-forward と 3-way マージ / `branch -d` の安全装置 / detached HEAD からの救出 |
 | 第5章 コンフリクト | 衝突を起こす → マーカーを消して解消 → `merge --abort` という逃げ道 |
 | 第6章 歴史を整える | `rebase`（衝突時の `--continue`）/ `cherry-pick` / `stash` / `revert` |
 | 第7章 リモート | `clone` / `fetch` と `pull` の違い / `push -u` / 拒否された push の直し方 |
 | 第8章 GitHub 実践 | 本物のリポジトリでブランチ → コミット → PR → コメント → マージ |
 
-第1〜7章で **28 ステージ**。すべて模範解答つきの自動テストで「本当にクリアできる」ことを検証しています。
+第1〜7章で **31 ステージ**。すべて模範解答つきの自動テストで「本当にクリアできる」ことを検証しています。
 
 ---
 
@@ -123,7 +125,7 @@ git は「どこで打ったか」で結果が変わります。入力欄の上�
 ## 開発
 
 ```sh
-npm test          # 擬似 Git エンジン・全ステージ・現在地・ロックの自動テスト（167 件）
+npm test          # エンジン・全ステージ・現在地・救出・ロックの自動テスト（193 件）
 npm run icons     # アイコン PNG を再生成
 npm run serve     # ローカルで開く
 ```
@@ -141,7 +143,7 @@ js/engine/     擬似 Git の本体（ブラウザにも node にも依存しな
   shell.js       cd / ls / cat / echo > などのファイル操作
   paths.js       カレントディレクトリとリポジトリの位置（どこで打ったか）
   graph.js       コミット DAG のレーン割り当て
-js/ui/         画面（ターミナル / グラフ / ファイル / クエスト）
+js/ui/         画面（ターミナル / グラフ / ファイル / クエスト / チートシート）
 js/stages/     ステージ定義（データ駆動）
 js/real/       第8章: GitHub REST クライアントと安全チェック
 js/game.js     ステージ進行と目標判定
@@ -273,6 +275,13 @@ node tools/set-password.mjs --off    # ロックを外す（ハッシュも消�
 公開そのものを止めるなら Settings → Pages で Source を **None** に戻します。
 `.github/workflows/pages.yml` の `on:` から `push:` の2行を消せば、
 手動実行（Actions タブの Run workflow）のときだけ公開されるようになります。
+
+### アプリの更新
+
+新しい版を公開すると、開いている端末に「新しい版があります ［更新］」のバーが出ます。
+**押すまで勝手にリロードはしません**（作業中に飛ぶと困るため）。「あとで」で閉じられます。
+
+`sw.js` を変更したときは `CACHE` の値も上げてください。これが更新の目印になります。
 
 ### 検索避け
 

@@ -132,7 +132,11 @@ export function renderQuest(el, session, revealed, handlers) {
 }
 
 /** ステージ一覧（引き出しの中身）。 */
-export function renderChapterList(listEl, progressEl, { currentId, isDone, onPick, onOpenReal }) {
+export function renderChapterList(
+  listEl,
+  progressEl,
+  { currentId, isDone, onPick, onOpenReal, onOpenCheat }
+) {
   listEl.innerHTML = '';
 
   const doneCount = ALL_STAGES.filter((s) => isDone(s.id)).length;
@@ -201,4 +205,28 @@ export function renderChapterList(listEl, progressEl, { currentId, isDone, onPic
   b.addEventListener('click', onOpenReal);
   block.appendChild(b);
   listEl.appendChild(block);
+
+  // いつでも引ける逆引きチートシート
+  const cheatBlock = document.createElement('div');
+  cheatBlock.className = 'ch-block';
+  const cheatTitle = document.createElement('div');
+  cheatTitle.className = 'ch-title';
+  cheatTitle.textContent = '困ったときに';
+  cheatBlock.appendChild(cheatTitle);
+  const cheatSub = document.createElement('div');
+  cheatSub.className = 'ch-sub';
+  cheatSub.textContent = 'やりたいことからコマンドを引く';
+  cheatBlock.appendChild(cheatSub);
+  const cheatBtn = document.createElement('button');
+  cheatBtn.className = 'stage-btn';
+  const cheatMark = document.createElement('span');
+  cheatMark.className = 'st-mark';
+  cheatMark.textContent = '?';
+  cheatBtn.appendChild(cheatMark);
+  const cheatLabel = document.createElement('span');
+  cheatLabel.textContent = '逆引きチートシートを開く';
+  cheatBtn.appendChild(cheatLabel);
+  cheatBtn.addEventListener('click', onOpenCheat);
+  cheatBlock.appendChild(cheatBtn);
+  listEl.appendChild(cheatBlock);
 }

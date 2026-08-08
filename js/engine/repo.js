@@ -36,6 +36,8 @@ export function createRepo(opts = {}) {
     workdir: Object.create(null), // path -> 文字列の中身
     remotes: Object.create(null), // 'origin' -> {url, repo}
     stash: [],
+    // HEAD がどこにいたかの履歴。消したつもりのコミットを救い出す命綱。
+    reflog: [],
     MERGE_HEAD: null, // マージ中に相手側の sha を保持
     MERGE_MSG: null,
     REBASE: null, // {onto, todo:[sha...], current, originalBranch, originalHead}
@@ -172,6 +174,14 @@ export function listTags(repo) {
  */
 export function resolveRev(repo, rev) {
   if (!rev) return null;
+
+  // HEAD@{2} のような reflog 参照。消えたコミットを取り戻すときに使う。
+  const reflogRef = /^HEAD@\{(\d+)\}$/.exec(rev);
+  if (reflogRef) {
+    const entry = (repo.reflog || [])[Number(reflogRef[1])];
+    return entry ? entry.sha : null;
+  }
+
   let m = /^(.*?)([~^])(\d*)$/.exec(rev);
   if (m) {
     const base = resolveRev(repo, m[1]);

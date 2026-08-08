@@ -41,12 +41,21 @@ const SOLUTIONS = {
   'ch2-4': ['git reset --hard HEAD', 'ls'],
   'ch2-5': ['git add login.test.js', 'git commit --amend -m "ログイン機能とテストを追加"'],
   'ch2-6': ['echo "*.log" > .gitignore', 'echo "secrets.env" >> .gitignore', 'git status'],
+  'ch2-7': [
+    'echo ".env" > .gitignore',
+    'git rm --cached .env',
+    'git add .gitignore',
+    'git commit -m ".env の追跡をやめる"',
+    'git status',
+  ],
+  'ch2-8': ['git reflog', 'git reset --hard HEAD@{1}', 'git log --oneline'],
 
   // ---- 第3章
   'ch3-1': ['git switch -c feature/dark-mode', 'git branch'],
   'ch3-2': ['git merge feature/dark-mode'],
   'ch3-3': ['git merge feature/search'],
   'ch3-4': ['git branch -d feature/search', 'git branch -d feature/wip', 'git branch'],
+  'ch3-5': ['git status', 'git switch -c rescue', 'git branch'],
 
   // ---- 第4章
   'ch4-1': ['git merge feature/copy', 'git status', 'cat index.html'],

@@ -634,12 +634,32 @@ function cmdSwitch(repo, argv, { legacy = false } = {}) {
         '既にあるブランチへ移るなら -c を外して `git switch ' + target + '`。'
       );
     }
-    const start = args[1] ? resolveRev(repo, args[1]) : headCommit(repo);
-    if (!start) return needCommit(repo);
+    const current = headCommit(repo);
+    const start = args[1] ? resolveRev(repo, args[1]) : current;
+    if (!start) {
+      return args[1]
+        ? err(`fatal: invalid reference: ${args[1]}`, '開始位置に指定した名前が見つかりません。')
+        : needCommit(repo);
+    }
+
+    // 開始位置を明示したときは、そのコミットの内容を作業ツリーに展開する。
+    // ここを飛ばすと「HEAD は移ったのにファイルが元のまま」になってしまう。
+    const movesAway = start !== current;
+    if (movesAway && !isClean(repo)) {
+      return err(
+        'error: Your local changes would be overwritten by checkout.',
+        '未コミットの変更があります。先に `git commit` か `git stash` を。'
+      );
+    }
+
     repo.refs['refs/heads/' + target] = start;
     repo.HEAD = { type: 'branch', ref: 'refs/heads/' + target };
+    if (movesAway) checkoutCommit(repo, start);
+
     return ok(
-      `Switched to a new branch '${target}'\n（作業ツリーはそのまま。今の場所から枝が伸びました）`
+      movesAway
+        ? `Switched to a new branch '${target}'\n（${start} の内容が作業ツリーに展開されました）`
+        : `Switched to a new branch '${target}'\n（作業ツリーはそのまま。今の場所から枝が伸びました）`
     );
   }
 
@@ -1428,6 +1448,14 @@ const HELP = {
   fetch: ['git fetch', 'リモートの最新を取得。origin/* だけ動き、作業ツリーは変わりません。'],
   pull: ['git pull / --rebase', 'fetch + merge（または rebase）。'],
   push: ['git push -u origin <branch>', '手元のコミットをリモートに送ります。'],
+  reflog: [
+    'git reflog',
+    'HEAD が通ってきた場所の履歴。reset --hard や branch -D で見失ったコミットを取り戻せます。',
+  ],
+  rm: [
+    'git rm --cached <file>',
+    '--cached はファイルを消さずに「追跡だけ」やめます。.gitignore を後から効かせるときに使います。',
+  ],
 };
 
 function cmdHelp(repo, argv) {
@@ -1447,6 +1475,81 @@ function cmdHelp(repo, argv) {
     '  シェル: ls / cat / touch / echo "x" > file / rm / mv / mkdir / edit <file> / clear'
   );
   return ok(lines.join('\n'));
+}
+
+// ---------------------------------------------------------------- reflog
+
+/** コマンド名から reflog に残す動作名を決める（本物の git の表記に寄せる）。 */
+function reflogAction(sub, argv) {
+  if (sub === 'commit') return argv.includes('--amend') ? 'commit (amend)' : 'commit';
+  if (sub === 'switch' || sub === 'checkout') return 'checkout';
+  if (sub === 'reset') return 'reset';
+  if (sub === 'merge') return 'merge';
+  if (sub === 'rebase') return 'rebase';
+  if (sub === 'cherry-pick') return 'cherry-pick';
+  if (sub === 'revert') return 'revert';
+  if (sub === 'pull') return 'pull';
+  if (sub === 'clone') return 'clone';
+  return sub;
+}
+
+/**
+ * HEAD が動いたことを記録する。
+ * これがあるおかげで `git reset --hard` や `git branch -D` で
+ * 見失ったコミットを後から取り戻せる。
+ */
+function recordReflog(repo, action, message) {
+  const sha = headCommit(repo);
+  if (!sha) return;
+  repo.reflog = repo.reflog || [];
+  if (repo.reflog[0] && repo.reflog[0].sha === sha) return; // 動いていなければ残さない
+  repo.reflog.unshift({ sha, action, message });
+}
+
+function cmdReflog(repo, argv) {
+  const guard = needRepo(repo);
+  if (guard) return guard;
+  const log = repo.reflog || [];
+  if (!log.length) return ok('（reflog はまだ空です）');
+
+  const lines = log.map(
+    (e, i) => `${e.sha} HEAD@{${i}}: ${e.action}: ${e.message}`
+  );
+  return ok(
+    lines.join('\n'),
+    'ここに出ている sha は、たとえブランチから外れていても取り戻せます。`git switch -c 名前 HEAD@{1}` や `git reset --hard HEAD@{1}`。'
+  );
+}
+
+// ---------------------------------------------------------------- rm
+
+function cmdRm(repo, argv) {
+  const guard = needRepo(repo);
+  if (guard) return guard;
+  const { flags, args } = parseFlags(argv);
+  if (!args.length) return err('fatal: No pathspec given');
+
+  const cached = flags['--cached'];
+  const work = repoWorkdir(repo);
+  const pool = [...new Set([...Object.keys(work), ...Object.keys(repo.index)])];
+  const targets = matchPaths(repo, args, pool);
+  if (!targets.length) {
+    return err(`fatal: pathspec '${args[0]}' did not match any files`);
+  }
+
+  for (const p of targets) {
+    delete repo.index[p];
+    if (!cached) delete repo.workdir[toWorkKey(repo, p)];
+  }
+  refreshIgnore(repo);
+
+  const shown = targets.map((t) => displayRepoPath(repo, t));
+  return ok(
+    targets.map((t) => `rm '${displayRepoPath(repo, t)}'`).join('\n'),
+    cached
+      ? `追跡をやめました（ファイル自体は残っています）: ${shown.join(', ')}\nこのあとコミットすると、git から見て「削除された」ことになります。.gitignore が効くのはここからです。`
+      : 'ファイルごと削除し、削除をステージしました。'
+  );
 }
 
 // ---------------------------------------------------------------- ディスパッチ
@@ -1486,6 +1589,8 @@ const TABLE = {
   pull: cmdPull,
   push: cmdPush,
   clean: cmdClean,
+  reflog: cmdReflog,
+  rm: cmdRm,
   help: cmdHelp,
 };
 
@@ -1510,7 +1615,17 @@ export function runGit(repo, argv, ctx = {}) {
       close.length ? `もしかして: ${close.join(', ')}` : '`git help` で一覧が見られます。'
     );
   }
-  return fn(repo, rest, ctx);
+
+  const before = headCommit(repo);
+  const result = fn(repo, rest, ctx);
+
+  // HEAD が動いたら reflog に残す。ここを一箇所にまとめておくと records の漏れが無い。
+  const after = headCommit(repo);
+  if (after && after !== before) {
+    const c = readCommit(repo, after);
+    recordReflog(repo, reflogAction(sub, rest), c ? c.message : '');
+  }
+  return result;
 }
 
 export { HELP };

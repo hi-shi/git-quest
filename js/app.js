@@ -15,6 +15,7 @@ import { renderGraph } from './ui/graphview.js';
 import { renderFiles } from './ui/filesview.js';
 import { renderQuest, renderChapterList, markup } from './ui/questview.js';
 import { renderRealMode } from './real/realmode.js';
+import { renderCheatsheet } from './ui/cheatsheet.js';
 import {
   isCleared,
   markCleared,
@@ -46,6 +47,7 @@ const els = {
   fileDetail: $('file-detail'),
   questBody: $('quest-body'),
   realBody: $('real-body'),
+  cheatBody: $('cheat-body'),
   drawer: $('drawer'),
   chapterList: $('chapter-list'),
   drawerProgress: $('drawer-progress'),
@@ -190,6 +192,18 @@ function renderAll() {
   if (!session) return;
   const { stage, repo, goalState, cleared } = session;
 
+  if (state.view === 'cheat') {
+    els.stageChapter.textContent = '困ったときに';
+    els.stageName.textContent = '逆引きチートシート';
+    els.goalbar.innerHTML = '';
+    const pip = document.createElement('span');
+    pip.className = 'goal-pip wide';
+    pip.textContent = 'やりたいことからコマンドを引けます';
+    els.goalbar.appendChild(pip);
+    els.tabBadge.hidden = true;
+    return;
+  }
+
   // 第8章は擬似リポジトリの外なので、見出しも目標の帯も専用の表示にする
   if (state.view === 'real') {
     els.stageChapter.textContent = '第8章 GitHub 実践';
@@ -271,6 +285,9 @@ function showView(name) {
   if (name === 'real') {
     renderRealMode(els.realBody, { onBack: () => showView('quest') });
   }
+  if (name === 'cheat') {
+    renderCheatsheet(els.cheatBody, { onBack: () => showView('quest') });
+  }
   renderAll();
   if (name === 'terminal') terminal.scrollToEnd();
 }
@@ -292,6 +309,10 @@ function openDrawer() {
     onOpenReal: () => {
       closeDrawer();
       showView('real');
+    },
+    onOpenCheat: () => {
+      closeDrawer();
+      showView('cheat');
     },
   });
   els.drawer.hidden = false;
@@ -427,12 +448,81 @@ await ensureUnlocked();
 loadStage(firstUnclearedStage());
 
 // Service Worker（オフライン動作）。file:// で開いたときは登録しない。
+//
+// 更新は自動では当てない。新しい版を見つけたらバーを出し、
+// ユーザーが押したときだけ切り替える（作業中に勝手にリロードされないように）。
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js');
+
+      // 既に新しい版が待機していることもある（前回バーを閉じた場合など）
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg.waiting);
+
+      reg.addEventListener('updatefound', () => {
+        const incoming = reg.installing;
+        if (!incoming) return;
+        incoming.addEventListener('statechange', () => {
+          // controller がある = 既にこの版で動いている → これは「更新」
+          if (incoming.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateBar(incoming);
+          }
+        });
+      });
+
+      // 読み直すのは「更新」を押されたときだけ。
+      // 初回訪問でも controllerchange は起きるので、そこで reload すると
+      // 開いた瞬間に勝手にリロードされてしまう。
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!updateAccepted || reloading) return;
+        reloading = true;
+        location.reload();
+      });
+    } catch {
       /* オフライン対応が無くてもアプリ自体は動く */
-    });
+    }
   });
+}
+
+// 「更新」を押したときだけ読み直す。押していないのに画面が飛ぶのを防ぐ。
+let updateAccepted = false;
+
+/** 「新しい版があります」のバーを出す。押されたら待機中の SW に切り替える。 */
+function showUpdateBar(worker) {
+  if (document.getElementById('update-bar')) return;
+
+  const bar = document.createElement('div');
+  bar.id = 'update-bar';
+  bar.className = 'update-bar';
+  bar.setAttribute('role', 'status');
+
+  const text = document.createElement('span');
+  text.className = 'update-text';
+  text.textContent = '新しい版があります';
+  bar.appendChild(text);
+
+  const apply = document.createElement('button');
+  apply.className = 'update-btn';
+  apply.textContent = '更新';
+  apply.addEventListener('click', () => {
+    apply.disabled = true;
+    apply.textContent = '更新中…';
+    updateAccepted = true;
+    worker.postMessage({ type: 'SKIP_WAITING' });
+    // 万一 controllerchange が来なくても待たせ続けないための保険
+    setTimeout(() => location.reload(), 2500);
+  });
+  bar.appendChild(apply);
+
+  const later = document.createElement('button');
+  later.className = 'update-later';
+  later.textContent = 'あとで';
+  later.setAttribute('aria-label', '閉じる');
+  later.addEventListener('click', () => bar.remove());
+  bar.appendChild(later);
+
+  document.body.appendChild(bar);
 }
 
 // デバッグ／自動テストから触れるように最小限だけ公開する
