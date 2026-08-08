@@ -1642,6 +1642,143 @@ const ch6 = {
       ],
       wantedCommands: [/^git push/, /^git pull/],
     },
+    {
+      id: 'ch6-5',
+      title: 'origin ってなに？',
+      intro:
+        '`origin` は git の予約語ではありません。**リモートの URL に付けた、ただのあだ名**です。\n本当にあだ名なのか、名前を変えて確かめてみましょう。',
+      setup(repo, ctx) {
+        ctx.remote = makeTeamRemote();
+        seed(repo, `git clone ${REMOTE_URL}`, ctx);
+      },
+      remoteUrl: REMOTE_URL,
+      goals: [
+        {
+          text: 'git remote -v で「あだ名 → URL」の対応を見る',
+          check: (r, ctx) => usedCommand(ctx, /^git remote -v/),
+        },
+        {
+          text: 'origin を upstream という名前に変える',
+          check: (r) => !!r.remotes.upstream && !r.remotes.origin,
+        },
+        {
+          text: '追跡ブランチも upstream/* に変わったことを確認する',
+          check: (r, ctx) =>
+            Object.keys(r.refs).some((ref) => ref.startsWith('refs/remotes/upstream/')) &&
+            usedCommand(ctx, /^git branch -a|^git branch --all/),
+        },
+      ],
+      hints: [
+        '`git remote -v` を打つと、`origin` の右に URL が出ます。これが対応表です。',
+        '`git remote rename origin upstream` で改名できます。',
+        '`git branch -a` で追跡ブランチの一覧が見られます。`origin/main` が `upstream/main` になっているはずです。',
+      ],
+      teach: [
+        '`origin` は `git clone` が自動で付ける **既定のあだ名**です。特別な意味はありません。',
+        'あだ名 → URL の対応は `git remote -v` で確認できます。困ったらまずこれ。',
+        '実務では複数のリモートを持つことがあります（例: 自分のフォークが `origin`、本家が `upstream`）。だから名前で区別できることが大事なのです。',
+      ],
+      wantedCommands: [/^git remote -v/, /^git remote rename/, /^git branch -a/],
+    },
+    {
+      id: 'ch6-6',
+      title: 'origin/main と main は別物',
+      intro:
+        '`main` と `origin/main` は名前が似ていますが、まったく別のものです。\n同僚がリモートを進めました。`git fetch` を打って、**どちらが動いてどちらが動かないか**を確かめてください。',
+      setup(repo, ctx) {
+        ctx.remote = makeTeamRemote();
+        seed(repo, `git clone ${REMOTE_URL}`, ctx);
+        advanceRemote(ctx.remote, `
+          echo "同僚が書いた機能" > teammate.js
+          git add .
+          git commit -m "同僚の新機能"
+        `);
+      },
+      remoteUrl: REMOTE_URL,
+      goals: [
+        {
+          text: 'fetch する前に、main と origin/main が同じ位置にあることを見る',
+          check: (r, ctx) => usedCommand(ctx, /^git log|^git branch -a|^git status/),
+        },
+        {
+          text: 'git fetch を実行する',
+          check: (r, ctx) => usedCommand(ctx, /^git fetch/),
+        },
+        {
+          text: 'origin/main だけが進み、main は動いていないことを確認する',
+          check: (r, ctx) =>
+            r.refs['refs/remotes/origin/main'] !== r.refs['refs/heads/main'] &&
+            usedCommand(ctx, /^git (log|branch -a|status)/),
+        },
+        {
+          text: '作業ツリーにも同僚のファイルが無いことを確認する',
+          check: (r, ctx) => !('teammate.js' in r.workdir) && usedCommand(ctx, /^ls/),
+        },
+      ],
+      hints: [
+        'まず `git log --oneline --all` を打つと、main と origin/main が同じところにいます。',
+        '`git fetch` のあと、もう一度 `git log --oneline --all`。origin/main だけが先に進んでいます。',
+        '`ls` してみてください。同僚のファイルはまだ手元にありません。グラフ画面（⑂）でも確認できます。',
+      ],
+      teach: [
+        '`main` = **あなたのブランチ**。あなたがコミットしたときだけ動きます。',
+        '`origin/main` = **最後に確認したときのリモートの main の位置**を覚えている付箋。`fetch` したときだけ動きます。',
+        'だから `fetch` しても手元のファイルは1つも変わりません。「見に行っただけ」だからです。',
+        '取り込むには `git merge origin/main`。`git pull` はこの2つ（fetch + merge）をまとめて実行しています。',
+      ],
+      wantedCommands: [/^git fetch/, /^git log|^git branch -a/, /^ls/],
+    },
+    {
+      id: 'ch6-7',
+      title: 'fetch に引数を付ける',
+      intro:
+        '`git fetch` は引数の付け方で意味が変わります。3つの形を順に試して、違いを見てください。\n最後の形だけが、あなたのローカルブランチを直接書き換えます。',
+      setup(repo, ctx) {
+        ctx.remote = makeTeamRemote();
+        seed(repo, `git clone ${REMOTE_URL}`, ctx);
+        seed(ctx.remote, `
+          git switch -c release
+          echo "リリース版" > release.txt
+          git add .
+          git commit -m "リリース準備"
+          git switch main
+          echo "本流の更新" > main-work.txt
+          git add .
+          git commit -m "main を更新"
+        `);
+      },
+      remoteUrl: REMOTE_URL,
+      goals: [
+        {
+          text: 'ブランチを指定して取ってくる（git fetch origin release）',
+          check: (r, ctx) => usedCommand(ctx, /^git fetch origin release\s*$/),
+        },
+        {
+          text: 'origin/release ができている',
+          check: (r) => 'refs/remotes/origin/release' in r.refs,
+        },
+        {
+          text: 'src:dst の形で、ローカルに staging ブランチを作る',
+          check: (r) => 'refs/heads/staging' in r.refs,
+        },
+        {
+          text: '今いるブランチへの直接 fetch は拒否されることを確かめる',
+          check: (r, ctx) => ctx.refusedFetch === true,
+        },
+      ],
+      hints: [
+        '`git fetch origin release` … release だけを取ってきて `origin/release` を作ります。',
+        '`git fetch origin release:staging` … リモートの release を、**ローカルの staging ブランチ**に直接書き込みます。',
+        '`git fetch origin main:main` を試してください。今いるブランチには書き込めないので拒否されます。',
+      ],
+      teach: [
+        '`git fetch origin <branch>` … そのブランチだけを `origin/<branch>` に取ってくる。安全。',
+        '`git fetch origin <src>:<dst>` … リモートの `<src>` を **ローカルの `<dst>`** に直接書き込む。`origin/*` を経由しません。',
+        '`:` を使う形は、切り替えずに別ブランチを最新にしたいときに便利です。ただし**自分の作業を上書きしうる**ので、普段は `origin/*` 経由（引数なしの fetch）で十分です。',
+        '今いるブランチには直接 fetch できません（作業ツリーと食い違うため）。そこは `git pull` の役目です。',
+      ],
+      wantedCommands: [/^git fetch origin/],
+    },
   ],
 };
 

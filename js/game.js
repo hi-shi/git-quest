@@ -97,6 +97,11 @@ function recordWhere(session, line, result, { whereBefore, inRepoBefore }) {
 
   // 入れ子リポジトリの作成を止められたか
   if (/^git init\b/.test(line) && !result.ok && /入れ子/.test(result.out)) ctx.blockedInit = true;
+
+  // 今いるブランチへの直接 fetch が拒否されたか
+  if (/^git fetch\b/.test(line) && !result.ok && /refusing to fetch/.test(result.out)) {
+    ctx.refusedFetch = true;
+  }
 }
 
 function evaluate(session) {

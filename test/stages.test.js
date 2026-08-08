@@ -100,6 +100,23 @@ const SOLUTIONS = {
   ],
   'ch6-3': ['git fetch', 'ls', 'git merge origin/main'],
   'ch6-4': ['git push', 'git pull', 'git push'],
+  'ch6-5': [
+    'git remote -v',
+    'git remote rename origin upstream',
+    'git branch -a',
+  ],
+  'ch6-6': [
+    'git log --oneline --all',
+    'git fetch',
+    'git log --oneline --all',
+    'ls',
+  ],
+  'ch6-7': [
+    'git fetch origin release',
+    'git fetch origin release:staging',
+    'git fetch origin main:main',
+    'git branch',
+  ],
 };
 
 /** 解答を流して最終状態を返す。 */
@@ -115,7 +132,9 @@ function play(stageId, { allowFail = [] } = {}) {
         /^(git push|git branch -d feature\/wip|git merge feature\/copy|git rebase main)/.test(line) ||
         // 現在地の章は「失敗を体験する」のが目的のステージがある
         (stageId === 'cwd-2' && /^git status/.test(line)) ||
-        (stageId === 'cwd-4' && /^git init/.test(line));
+        (stageId === 'cwd-4' && /^git init/.test(line)) ||
+        // 「拒否されることを確かめる」のが目的
+        (stageId === 'ch6-7' && /^git fetch origin main:main/.test(line));
       if (!expectFail) {
         assert.fail(`${stageId}: 「${line}」が失敗\n${result.out}\n${result.hint || ''}`);
       }

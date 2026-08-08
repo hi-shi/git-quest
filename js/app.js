@@ -104,7 +104,9 @@ function loadStage(stageId, { fresh = false } = {}) {
   terminal.write({ kind: 'sys', text: stage.intro });
   terminal.write({
     kind: 'sys',
-    text: '目標はクエスト画面（下部タブの ◎）に出ています。困ったら `help` か、ヒントを開いてください。',
+    text:
+      '目標は画面下の「◎ クエスト」に出ています。\n' +
+      'コマンドが分からなくなったら、いちばん右の「？ 逆引き」でやりたいことから探せます。',
   });
 
   renderAll();

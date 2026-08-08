@@ -862,7 +862,7 @@ code,
   height: calc(var(--tabbar-h) + var(--safe-b));
   padding-bottom: var(--safe-b);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: var(--bg-raised);
   border-top: 1px solid var(--line);
 }
@@ -886,8 +886,17 @@ code,
   line-height: 1;
 }
 
+/* ターミナルは >_ のプロンプト風。等幅で少し詰める */
+.tab-ico.mono {
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+}
+
 .tab-label {
-  font-size: 10.5px;
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .tab.is-active {
@@ -897,7 +906,7 @@ code,
 .tab-badge {
   position: absolute;
   top: 7px;
-  right: 22%;
+  right: 18%;
   min-width: 8px;
   height: 8px;
   border-radius: 4px;

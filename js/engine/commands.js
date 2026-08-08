@@ -1261,6 +1261,27 @@ function cmdRemote(repo, argv) {
       `リモート ${name} を登録しました → ${url}\n（まだ何も送っていません。送るのは \`git push\`）`
     );
   }
+  if (sub === 'rename') {
+    const [, from, to] = args;
+    if (!from || !to) return err('usage: git remote rename <old> <new>');
+    if (!repo.remotes[from]) return err(`error: No such remote: '${from}'`);
+    if (repo.remotes[to]) return err(`error: remote ${to} already exists.`);
+
+    repo.remotes[to] = repo.remotes[from];
+    delete repo.remotes[from];
+    // 追跡ブランチの名前も付け替える（origin/main → upstream/main）
+    for (const ref of Object.keys(repo.refs)) {
+      const prefix = 'refs/remotes/' + from + '/';
+      if (ref.startsWith(prefix)) {
+        repo.refs['refs/remotes/' + to + '/' + ref.slice(prefix.length)] = repo.refs[ref];
+        delete repo.refs[ref];
+      }
+    }
+    return ok(
+      `リモート ${from} を ${to} に改名しました\n追跡ブランチも ${from}/* → ${to}/* に変わっています`,
+      'origin は特別な名前ではなく、ただのあだ名です。好きな名前を付けられます。'
+    );
+  }
   if (sub === 'remove' || sub === 'rm') {
     delete repo.remotes[args[1]];
     for (const ref of Object.keys(repo.refs)) {
@@ -1302,31 +1323,97 @@ function cmdClone(repo, argv, ctx) {
   );
 }
 
+/**
+ * git fetch [<remote>] [<src>[:<dst>]...]
+ *
+ * 引数の形で意味が変わるところが分かりにくいので、3つに分けて扱う。
+ *   git fetch                 … 全ブランチを <remote>/* に取ってくる
+ *   git fetch origin main     … main を origin/main に取ってくる（FETCH_HEAD にも入る）
+ *   git fetch origin main:dev … リモートの main を、ローカルの dev に直接書き込む
+ * 3つ目だけがローカルのブランチを動かす。ここが事故のもと。
+ */
 function cmdFetch(repo, argv) {
   const guard = needRepo(repo);
   if (guard) return guard;
-  const remote = getRemote(repo);
-  if (!remote) return err('fatal: No remote repository specified.', '先に `git remote add origin <url>`。');
+  const { args } = parseFlags(argv);
+
+  const remoteName = args[0] && repo.remotes[args[0]] ? args[0] : 'origin';
+  const remote = getRemote(repo, remoteName);
+  if (!remote) {
+    return err(
+      `fatal: '${args[0] || 'origin'}' does not appear to be a git repository`,
+      '登録済みのリモートは `git remote -v` で確認できます。'
+    );
+  }
+  const refspecs = args.slice(repo.remotes[args[0]] ? 1 : 0);
   const lines = [`From ${remote.url}`];
   let changed = 0;
-  for (const [ref, sha] of Object.entries(remote.repo.refs)) {
-    if (!ref.startsWith('refs/heads/')) continue;
-    const name = ref.replace('refs/heads/', '');
-    const trackRef = 'refs/remotes/origin/' + name;
-    if (repo.refs[trackRef] !== sha) {
-      copyObjects(remote.repo, repo, sha);
-      const old = repo.refs[trackRef];
-      repo.refs[trackRef] = sha;
-      lines.push(`   ${(old || '').slice(0, 7)}..${sha}  ${name} -> origin/${name}`);
+
+  const fetchOne = (srcName, dstRef) => {
+    const srcRef = 'refs/heads/' + srcName;
+    const sha = remote.repo.refs[srcRef];
+    if (sha === undefined) {
+      return `fatal: couldn't find remote ref ${srcName}`;
+    }
+    copyObjects(remote.repo, repo, sha);
+    const old = repo.refs[dstRef];
+    if (old !== sha) {
+      repo.refs[dstRef] = sha;
+      const label = dstRef.startsWith('refs/remotes/')
+        ? dstRef.replace('refs/remotes/', '')
+        : dstRef.replace('refs/heads/', '') + '（ローカルブランチ）';
+      lines.push(`   ${(old || '').slice(0, 7)}..${sha}  ${srcName} -> ${label}`);
       changed++;
     }
+    repo.FETCH_HEAD = sha;
+    return null;
+  };
+
+  if (!refspecs.length) {
+    // 引数なし: リモートの全ブランチを <remote>/* に
+    for (const [ref, sha] of Object.entries(remote.repo.refs)) {
+      if (!ref.startsWith('refs/heads/')) continue;
+      const name = ref.replace('refs/heads/', '');
+      const e = fetchOne(name, `refs/remotes/${remoteName}/${name}`);
+      if (e) return err(e);
+    }
+  } else {
+    for (const spec of refspecs) {
+      const [src, dst] = spec.split(':');
+      if (!dst) {
+        const e = fetchOne(src, `refs/remotes/${remoteName}/${src}`);
+        if (e) return err(e, 'リモートにそのブランチがあるか `git remote -v` と相手側で確認を。');
+        continue;
+      }
+
+      // src:dst — ローカルのブランチを直接書き換える形
+      const dstRef = dst.startsWith('refs/') ? dst : 'refs/heads/' + dst;
+      if (dstRef === headRef(repo)) {
+        return err(
+          `fatal: refusing to fetch into branch '${dst}' checked out at '${displayPath(repo)}'`,
+          '今いるブランチには直接 fetch できません。`git pull` を使うか、別のブランチに移ってから。'
+        );
+      }
+      const e = fetchOne(src, dstRef);
+      if (e) return err(e);
+    }
   }
-  if (!changed) return ok('（すでに最新です）');
-  lines.push(
-    '',
-    'origin/* の位置だけ更新しました。作業ツリーは変わっていません。',
-    'ローカルブランチに取り込むには `git merge origin/<branch>` か `git pull`。'
-  );
+
+  if (!changed) return ok('（すでに最新です）', 'リモート側に新しいコミットはありませんでした。');
+
+  const wroteLocal = refspecs.some((r) => r.includes(':'));
+  lines.push('');
+  if (wroteLocal) {
+    lines.push(
+      'ローカルのブランチを直接書き換えました。',
+      '（`:` を使うと origin/* ではなく自分のブランチが動きます）'
+    );
+  } else {
+    lines.push(
+      `${remoteName}/* の位置だけ更新しました。ローカルのブランチも作業ツリーも変わっていません。`,
+      `取り込むには \`git merge ${remoteName}/<branch>\` か \`git pull\`。`
+    );
+  }
   return ok(lines.join('\n'));
 }
 
@@ -1445,7 +1532,10 @@ const HELP = {
   tag: ['git tag <name>', 'コミットに動かない目印を付けます。'],
   remote: ['git remote add origin <url> / -v', 'リモートの登録と確認。'],
   clone: ['git clone <url>', 'リモートを丸ごと手元に持ってきます。'],
-  fetch: ['git fetch', 'リモートの最新を取得。origin/* だけ動き、作業ツリーは変わりません。'],
+  fetch: [
+    'git fetch [<remote>] [<src>[:<dst>]]',
+    'リモートの最新を取得。既定では <remote>/* だけ動き、作業ツリーは変わりません。`src:dst` と書くとローカルのブランチを直接書き換えます。',
+  ],
   pull: ['git pull / --rebase', 'fetch + merge（または rebase）。'],
   push: ['git push -u origin <branch>', '手元のコミットをリモートに送ります。'],
   reflog: [

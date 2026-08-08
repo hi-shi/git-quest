@@ -206,27 +206,11 @@ export function renderChapterList(
   block.appendChild(b);
   listEl.appendChild(block);
 
-  // いつでも引ける逆引きチートシート
-  const cheatBlock = document.createElement('div');
-  cheatBlock.className = 'ch-block';
-  const cheatTitle = document.createElement('div');
-  cheatTitle.className = 'ch-title';
-  cheatTitle.textContent = '困ったときに';
-  cheatBlock.appendChild(cheatTitle);
-  const cheatSub = document.createElement('div');
-  cheatSub.className = 'ch-sub';
-  cheatSub.textContent = 'やりたいことからコマンドを引く';
-  cheatBlock.appendChild(cheatSub);
-  const cheatBtn = document.createElement('button');
-  cheatBtn.className = 'stage-btn';
-  const cheatMark = document.createElement('span');
-  cheatMark.className = 'st-mark';
-  cheatMark.textContent = '?';
-  cheatBtn.appendChild(cheatMark);
-  const cheatLabel = document.createElement('span');
-  cheatLabel.textContent = '逆引きチートシートを開く';
-  cheatBtn.appendChild(cheatLabel);
-  cheatBtn.addEventListener('click', onOpenCheat);
-  cheatBlock.appendChild(cheatBtn);
-  listEl.appendChild(cheatBlock);
+  // チートシートは下部タブ「？逆引き」から開けるので、ここでは場所だけ案内する
+  const note = document.createElement('p');
+  note.className = 'fine';
+  note.style.padding = '0 6px';
+  note.textContent = '困ったときは、画面下いちばん右の「？逆引き」から逆引きチートシートが開けます。';
+  listEl.appendChild(note);
+  void onOpenCheat;
 }

@@ -92,13 +92,35 @@ export const SECTIONS = [
     ],
   },
   {
+    title: 'origin とリモート',
+    intro: '`origin` は URL に付けたあだ名です。git の予約語ではありません。',
+    items: [
+      { want: 'どの URL と繋がっているか知りたい', cmd: 'git remote -v', note: 'あだ名 → URL の対応表' },
+      { want: 'リモートを登録したい', cmd: 'git remote add origin <url>', note: 'origin 以外の名前でもよい' },
+      { want: 'あだ名を変えたい', cmd: 'git remote rename origin upstream' },
+      {
+        want: '`main` と `origin/main` の違いは？',
+        cmd: 'git log --oneline --all',
+        note: '`main` は自分のブランチ。`origin/main` は最後に fetch したときのリモートの位置を覚えた付箋',
+      },
+      { want: 'リモートのブランチ一覧を見たい', cmd: 'git branch -a' },
+    ],
+  },
+  {
     title: '共有する',
     items: [
       { want: 'リモートを取ってきたい', cmd: 'git clone <url>' },
       { want: '送りたい（初回）', cmd: 'git push -u origin <ブランチ>' },
       { want: '送りたい（2回目以降）', cmd: 'git push' },
       { want: '最新を取り込みたい', cmd: 'git pull', note: '中身は fetch + merge' },
-      { want: '取ってくるだけ、まだ取り込まない', cmd: 'git fetch', note: '`origin/*` だけ動く。作業ツリーは無事' },
+      { want: '取ってくるだけ、まだ取り込まない', cmd: 'git fetch', note: '`origin/*` だけ動く。ローカルのブランチも作業ツリーも無事' },
+      { want: '特定のブランチだけ取ってきたい', cmd: 'git fetch origin <branch>', note: '`origin/<branch>` が更新される' },
+      {
+        want: '切り替えずに別ブランチを最新にしたい',
+        cmd: 'git fetch origin <src>:<dst>',
+        note: 'リモートの `<src>` をローカルの `<dst>` に直接書き込む。今いるブランチには使えない',
+      },
+      { want: 'fetch したものを取り込みたい', cmd: 'git merge origin/<branch>', note: '`git pull` = fetch + merge' },
       {
         want: 'push が rejected された',
         cmd: 'git pull\ngit push',
