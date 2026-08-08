@@ -4,6 +4,11 @@
 # ただしあれは「よそ見防止」で、本物の認証ではありません。
 # 秘密の情報はこのアプリに入れないでください。
 #
+# Pages の有効化はこのワークフローが自分で行います（configure-pages の enablement）。
+# Settings → Pages を手で設定する必要はありません。
+# リポジトリを private → public に切り替えると Pages の設定が外れることがあるため、
+# 手動設定に頼らない形にしています。
+#
 # 公開を止めたいときは、下の `on:` から push の2行を消せば手動実行だけになります。
 # 完全に止めるなら Settings → Pages で Source を None に戻してください。
 
@@ -44,6 +49,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        with:
+          # Pages が未設定なら自動で有効化する（手動設定の取りこぼしを防ぐ）
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
