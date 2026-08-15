@@ -144,11 +144,18 @@ function renderDetail(detailEl, repo, path, onEdit) {
   st.textContent = states.join(' / ');
   detailEl.appendChild(st);
 
+  // 2か所ともズレているときは両方出す。上から「コミット → ステージ → 作業ツリー」の
+  // 順に並べると、3列表示と同じ向きで読める。
+  let shown = 0;
+  if (indexText !== headText) {
+    detailEl.appendChild(diffBlock('コミット → ステージ の差分（git diff --staged）', headText, indexText));
+    shown++;
+  }
   if (workText !== indexText) {
-    detailEl.appendChild(diffBlock('ステージ → 作業ツリー の差分', indexText, workText));
-  } else if (indexText !== headText) {
-    detailEl.appendChild(diffBlock('コミット → ステージ の差分', headText, indexText));
-  } else {
+    detailEl.appendChild(diffBlock('ステージ → 作業ツリー の差分（git diff）', indexText, workText));
+    shown++;
+  }
+  if (!shown) {
     const pre = document.createElement('div');
     pre.textContent = workText || '（空のファイル）';
     detailEl.appendChild(pre);

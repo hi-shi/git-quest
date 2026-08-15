@@ -42,27 +42,60 @@ export function diffLines(oldText, newText) {
   return lcs(splitLines(oldText), splitLines(newText));
 }
 
-/** git diff 風のテキスト（変更のあった部分だけ、前後2行の文脈つき）。 */
+/** unified diff の範囲表記。行数が1のときは本物同様 `,1` を省く。 */
+function range(start, count) {
+  return count === 1 ? String(start) : `${start},${count}`;
+}
+
+/**
+ * git diff 風のテキスト（変更のあった部分だけ、前後3行の文脈つき）。
+ * `@@ -1,4 +1,5 @@` の行番号も本物と同じ形で出す。diff の読み方を教える章があるので、
+ * ここが本物とズレていると学んだ読み方がそのまま使えなくなる。
+ */
 export function formatDiff(path, oldText, newText) {
   const parts = diffLines(oldText, newText);
   if (parts.every((p) => p.type === 'same')) return '';
-  const head = [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`];
+
+  // 各行が旧ファイル / 新ファイルの何行目にあたるかを先に数える（@@ の数字に使う）。
+  let oldNo = 0;
+  let newNo = 0;
+  const at = parts.map((p) => {
+    if (p.type !== 'add') oldNo++;
+    if (p.type !== 'del') newNo++;
+    return { old: oldNo, new: newNo };
+  });
+
+  const CONTEXT = 3;
   const keep = new Set();
   parts.forEach((p, i) => {
-    if (p.type !== 'same') for (let k = i - 2; k <= i + 2; k++) keep.add(k);
+    if (p.type !== 'same') for (let k = i - CONTEXT; k <= i + CONTEXT; k++) keep.add(k);
   });
-  const body = [];
-  let skipping = false;
-  parts.forEach((p, i) => {
+
+  const out = [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`];
+  let i = 0;
+  while (i < parts.length) {
     if (!keep.has(i)) {
-      if (!skipping) body.push('@@');
-      skipping = true;
-      return;
+      i++;
+      continue;
     }
-    skipping = false;
-    body.push((p.type === 'add' ? '+' : p.type === 'del' ? '-' : ' ') + p.line);
-  });
-  return [...head, ...body].join('\n');
+    const start = i;
+    while (i < parts.length && keep.has(i)) i++;
+    const hunk = parts.slice(start, i);
+
+    // 追加だけのハンクは旧側が 0 行になる。その場合の開始行は「直前までの行数」。
+    const fo = hunk.findIndex((p) => p.type !== 'add');
+    const fn = hunk.findIndex((p) => p.type !== 'del');
+    const oldStart = fo >= 0 ? at[start + fo].old : at[start].old;
+    const newStart = fn >= 0 ? at[start + fn].new : at[start].new;
+    const oldCount = hunk.filter((p) => p.type !== 'add').length;
+    const newCount = hunk.filter((p) => p.type !== 'del').length;
+
+    out.push(`@@ -${range(oldStart, oldCount)} +${range(newStart, newCount)} @@`);
+    for (const p of hunk) {
+      out.push((p.type === 'add' ? '+' : p.type === 'del' ? '-' : ' ') + p.line);
+    }
+  }
+  return out.join('\n');
 }
 
 /**

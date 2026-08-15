@@ -35,6 +35,7 @@ const SOLUTIONS = {
   'cwd-4': ['git init', 'pwd', 'cd ..', 'git add .', 'git commit -m "テーマを追加"'],
 
   // ---- 第2章
+  'ch2-0': ['git diff', 'echo "port: 8080" >> config.txt', 'git add notes.txt'],
   'ch2-1': ['git diff', 'git diff --staged'],
   'ch2-2': ['git restore --staged secret.txt', 'git status'],
   'ch2-3': ['git reset --soft HEAD~1', 'git status'],

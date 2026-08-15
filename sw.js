@@ -1,7 +1,7 @@
 // Service Worker。アプリシェルを precache して、電波が無くても第1〜7章が遊べるようにする。
 // 第8章だけは GitHub API を叩くのでネットワークが要る。
 
-const CACHE = 'git-quest-v4';
+const CACHE = 'git-quest-v5';
 
 const SHELL = [
   './',

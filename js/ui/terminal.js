@@ -329,10 +329,11 @@ function colorize(el, text) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     let cls = '';
+    // ヘッダ判定を先に置く。+++ を追加行として塗ると、見出しが「大きな追加」に見えて紛らわしい。
     if (/^<{7}|^={7}$|^>{7}/.test(line)) cls = 'd-conflict';
-    else if (/^\+/.test(line)) cls = 'd-add';
-    else if (/^-/.test(line) && !/^---/.test(line)) cls = 'd-del';
     else if (/^(diff --git|index |@@|\+\+\+|---)/.test(line)) cls = 'd-meta';
+    else if (/^\+/.test(line)) cls = 'd-add';
+    else if (/^-/.test(line)) cls = 'd-del';
 
     if (cls) {
       const span = document.createElement('span');

@@ -388,10 +388,80 @@ const ch2 = {
   blurb: 'git を怖がる一番の理由は「間違えたときに戻せるか分からない」こと。ここで戻し方を全部覚えます。',
   stages: [
     {
+      id: 'ch2-0',
+      title: 'diff の読み方',
+      intro:
+        'diff は暗号みたいに見えますが、覚えるのは「行の1文字目」だけです。\n' +
+        'まず `git diff` を打って、出てきたものを下の対応表と見比べてください。\n' +
+        '\n' +
+        '【見出し（ファイルの話）】\n' +
+        '・`diff --git a/config.txt b/config.txt` … ここから下は config.txt の差分\n' +
+        '・`--- a/config.txt` … a は「変更前」。マイナス3つが目印\n' +
+        '・`+++ b/config.txt` … b は「変更後」。プラス3つが目印\n' +
+        '・`@@ -1,3 +1,2 @@` … 変更前の1行目から3行分が、変更後は1行目から2行分になった\n' +
+        '\n' +
+        '【本文（行の話）】\n' +
+        '・`-` で始まる行 … 変更前にあって、今は無い行\n' +
+        '・`+` で始まる行 … 新しく増えた行\n' +
+        '・空白で始まる行 … 変わっていない行（場所の目印として一緒に出る）\n' +
+        '\n' +
+        '今回、config.txt には直した覚えのない削除が混ざっています。diff から見つけて戻してください。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "host: localhost" > config.txt
+          echo "debug: false" >> config.txt
+          echo "port: 8080" >> config.txt
+          echo "買うもの" > notes.txt
+          echo "- ねぎ" >> notes.txt
+          echo "- 豆腐" >> notes.txt
+          git add .
+          git commit -m "初版"
+          echo "host: localhost" > config.txt
+          echo "debug: true" >> config.txt
+          echo "買うもの" > notes.txt
+          echo "- ねぎ" >> notes.txt
+          echo "- 豆腐" >> notes.txt
+          echo "- 味噌" >> notes.txt
+        `);
+      },
+      goals: [
+        { text: 'git diff で差分を表示する', check: (r, ctx) => usedCommand(ctx, /^git diff/) },
+        {
+          text: '`-` の行を手がかりに、config.txt から消えた行を書き戻す',
+          check: (r) => fileHas(r, 'config.txt', 'port: 8080'),
+        },
+        {
+          text: '意図した変更（notes.txt）だけをステージに載せる',
+          check: (r) => status(r).staged.some((f) => f.path === 'notes.txt'),
+        },
+      ],
+      hints: [
+        '`git diff` を打つと config.txt と notes.txt の2ファイル分が続けて出ます。`diff --git` の行が「ここから別のファイル」の合図です。',
+        'config.txt は `-` が2行、`+` が1行。`debug: false` → `debug: true` は書き換えたつもりの変更なので、余っている `-port: 8080` が消えてしまった行です。',
+        '書き戻すのは `echo "port: 8080" >> config.txt`。最後の行だったので `>>`（追記）で元どおりになります。',
+        '最後に `git add notes.txt`。`git add .` にすると全部載ってしまうので、ファイル名を指定します。',
+      ],
+      teach: [
+        '見るのは各行の1文字目だけ。`-` は「消えた」、`+` は「増えた」、空白は「そのまま」。',
+        '`---` / `+++` は3つ重なっているのが目印で、行の増減ではなく「変更前 / 変更後のファイル名」の見出しです。a が古い方、b が新しい方。',
+        '1行の書き換えは「`-` 古い行」と「`+` 新しい行」の2行に分かれて出ます。しかも同じかたまりの中では `-` が先にまとまり、`+` が後にまとまります。「1対1で並ぶ」とは限らないので、`-` と `+` の行数を数えて読みます。',
+        '`@@ -1,3 +1,2 @@` は「変更前は1行目から3行、変更後は1行目から2行」。読み飛ばして構いませんが、長いファイルで場所を掴むのに使えます。',
+        '本物の git では `--- a/…` の上に `index e4d8393..405eaba 100644` という行も出ます。中身の ID なので、読み飛ばして大丈夫です。',
+      ],
+      wantedCommands: [/^git diff/, /^git add /],
+    },
+    {
       id: 'ch2-1',
       title: '2つの diff',
       intro:
-        'app.js を編集し、その一部だけをステージに載せた状態です。\n`git diff` と `git diff --staged` が何を比べているのか、両方打って見比べてください。',
+        'app.js を編集 → add → さらに編集、と進めたので、いま同じファイルの中身が3か所に別々に残っています。\n' +
+        '\n' +
+        '　直前のコミット … `const version = 1;`\n' +
+        '　ステージ　　　 … `const version = 2;`\n' +
+        '　作業ツリー　　 … `const version = 3;`\n' +
+        '\n' +
+        '2つの diff は、このうち隣り合う2か所を比べています。どちらがどこを見ているのか、両方打って確かめてください。',
       setup(repo) {
         seed(repo, `
           git init
@@ -411,14 +481,15 @@ const ch2 = {
         },
       ],
       hints: [
-        'まず `git diff` だけを打ってみてください。version 2 と 3 の差が出ます。',
-        '次に `git diff --staged`。こちらは version 1 と 2 の差です。',
-        '3つの場所（作業ツリー / ステージ / 直前のコミット）が別物だと分かればOK。',
+        'まず `git diff` だけを打ってみてください。手前の2か所（ステージ ↔ 作業ツリー）を比べるので、version 2 と 3 の差が出ます。',
+        '次に `git diff --staged`。奥の2か所（コミット ↔ ステージ）なので、version 1 と 2 の差です。',
+        '`git diff HEAD` も試してみてください。両区間をまとめた 1 → 3 の差が出ます。',
       ],
       teach: [
         '`git diff` = 作業ツリー ↔ ステージ。「まだ add していない変更」。',
         '`git diff --staged` = ステージ ↔ 直前のコミット。「add したけどまだ commit していない変更」。',
-        'ファイル画面の3列表示が、まさにこの3つの場所です。',
+        '次に `git commit` で記録されるのは `--staged` の方だけ。`git diff` に出ている分は手元に残ります。',
+        'ファイル画面の3列表示が、まさにこの3つの場所です。app.js をタップすると2つの差分が並んで見られます。',
       ],
       wantedCommands: [/^git diff/],
     },

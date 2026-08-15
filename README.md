@@ -77,14 +77,14 @@ git は「どこで打ったか」で結果が変わります。入力欄の上�
 | --- | --- |
 | 第1章 はじめの一歩 | `init` `add` `commit` `status` `log` — ステージという中継地点 |
 | 第2章 いま どこにいるか | `pwd` `cd` `ls` — リポジトリのルートとサブディレクトリ、`git add .` の落とし穴 |
-| 第3章 やり直しの術 | 2つの `diff` / `restore` / `reset` 3種 / `--amend` / `.gitignore` の落とし穴 / `reflog` で救出 |
+| 第3章 やり直しの術 | `diff` の読み方 / 2つの `diff` / `restore` / `reset` 3種 / `--amend` / `.gitignore` の落とし穴 / `reflog` で救出 |
 | 第4章 ブランチ | `switch -c` / fast-forward と 3-way マージ / `branch -d` の安全装置 / detached HEAD からの救出 |
 | 第5章 コンフリクト | 衝突を起こす → マーカーを消して解消 → `merge --abort` という逃げ道 |
 | 第6章 歴史を整える | `rebase`（衝突時の `--continue`）/ `cherry-pick` / `stash` / `revert` |
 | 第7章 リモート | `clone` / `fetch` と `pull` の違い / `push -u` / 拒否された push の直し方 / **origin の正体** / `fetch` の refspec |
 | 第8章 GitHub 実践 | 本物のリポジトリでブランチ → コミット → PR → コメント → マージ |
 
-第1〜7章で **34 ステージ**。すべて模範解答つきの自動テストで「本当にクリアできる」ことを検証しています。
+第1〜7章で **37 ステージ**。すべて模範解答つきの自動テストで「本当にクリアできる」ことを検証しています。
 
 ---
 
@@ -125,7 +125,7 @@ git は「どこで打ったか」で結果が変わります。入力欄の上�
 ## 開発
 
 ```sh
-npm test          # エンジン・全ステージ・現在地・救出・ロックの自動テスト（202 件）
+npm test          # エンジン・全ステージ・現在地・救出・ロックの自動テスト（205 件）
 npm run icons     # アイコン PNG を再生成
 npm run serve     # ローカルで開く
 ```
