@@ -1,0 +1,5 @@
+# エージェントが失敗したコマンドを書き出すログ
+failure.log
+
+# macOS
+.DS_Store
