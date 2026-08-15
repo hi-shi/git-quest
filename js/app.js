@@ -456,7 +456,11 @@ loadStage(firstUnclearedStage());
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('sw.js');
+      // updateViaCache: 'none' が要: 既定だとブラウザの HTTP キャッシュ越しに sw.js を見るため、
+      // GitHub Pages の max-age=600 の間は新しい版に気づかず、更新バーが出ない。
+      const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+      // 開くたびに新しい版が無いか確かめる（バーはユーザーが押すまで何もしない）
+      reg.update().catch(() => {});
 
       // 既に新しい版が待機していることもある（前回バーを閉じた場合など）
       if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg.waiting);
