@@ -138,6 +138,26 @@ export class GitHub {
     return this.request('GET', `${this.base}/pulls${q}`);
   }
 
+  async getPull(number) {
+    return this.request('GET', `${this.base}/pulls/${number}`);
+  }
+
+  /**
+   * 2つのブランチの進み具合。`ahead_by` / `behind_by` が返る。
+   * PR 画面の「This branch is out-of-date with the base branch」の中身。
+   */
+  async compare(base, head) {
+    return this.request(
+      'GET',
+      `${this.base}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`
+    );
+  }
+
+  /** GitHub Actions の実行履歴。Actions を使っていないリポジトリでは空で返る。 */
+  async listWorkflowRuns(perPage = 5) {
+    return this.request('GET', `${this.base}/actions/runs?per_page=${perPage}`);
+  }
+
   // ---- 書き込み（ここから先は必ず安全チェックを通す）
 
   /** `git switch -c` 相当。base の先端から新しいブランチを生やす。 */
@@ -176,6 +196,24 @@ export class GitHub {
     return this.request('PUT', `${this.base}/pulls/${number}/merge`, { merge_method: method });
   }
 
+  /**
+   * バックマージ。`base` に `head` を取り込む（向きがふだんと逆）。
+   * PR 画面の `Update branch` ボタンと同じ操作。書き込み先は base 側なのでそこを守る。
+   */
+  async mergeIntoBranch(base, head, message) {
+    assertWritableBranch(base);
+    return this.request('POST', `${this.base}/merges`, {
+      base,
+      head,
+      commit_message: message,
+    });
+  }
+
+  /** PR にレビューを付ける。event は APPROVE / REQUEST_CHANGES / COMMENT。 */
+  async reviewPull(number, event, body) {
+    return this.request('POST', `${this.base}/pulls/${number}/reviews`, { event, body });
+  }
+
   async deleteBranch(branch) {
     assertWritableBranch(branch);
     return this.request('DELETE', `${this.base}/git/refs/heads/${encodeURIComponent(branch)}`);
@@ -203,6 +241,9 @@ function explain(status, message) {
   }
   if (status === 404) {
     return `見つかりません（404）。リポジトリ名が正しいか、トークンがそのリポジトリを含んでいるか確認してください。\n${message}`;
+  }
+  if (status === 405) {
+    return `この操作は許可されていません（405）。リポジトリの Settings → General → Pull Requests で、そのマージ方式が無効になっているか、まだマージできる状態ではありません。\n${message}`;
   }
   if (status === 422) {
     return `リクエストが受け付けられませんでした（422）。同じ名前のブランチや PR が既にある可能性があります。\n${message}`;

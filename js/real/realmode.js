@@ -23,6 +23,16 @@ function load() {
     prNumber: s.prNumber || null,
     prUrl: s.prUrl || '',
     done: s.done || {},
+    // 実務編
+    wBranch: s.wBranch || '',
+    wPr: s.wPr || null,
+    wPrUrl: s.wPrUrl || '',
+    wMatePr: s.wMatePr || null,
+    wBehind: s.wBehind === undefined ? null : s.wBehind,
+    wBackmerged: !!s.wBackmerged,
+    wReviewed: !!s.wReviewed,
+    wMerged: s.wMerged || '',
+    wSawCi: !!s.wSawCi,
   };
 }
 
@@ -52,13 +62,17 @@ function renderLog(el) {
  * `{owner}` `{repo}` を実際の値に置き換える。
  * プレースホルダのままだと「自分がどこを触っているのか」が結びつかないため。
  */
-function realUrl(api, st) {
-  const path = api
-    .replace(/\{owner\}/g, st.owner || '{owner}')
-    .replace(/\{repo\}/g, st.repo || '{repo}')
-    .replace(/\{branch\}/g, st.branch || '{branch}')
-    .replace(/\{number\}/g, st.prNumber || '{number}')
-    .replace(/\{path\}/g, st.filePath || '{path}');
+function realUrl(api, st, vars) {
+  const table = {
+    owner: st.owner,
+    repo: st.repo,
+    branch: st.branch,
+    number: st.prNumber,
+    path: st.filePath,
+    base: st.baseBranch,
+    ...(vars || {}), // 実務編は自分のブランチ・PR 番号で上書きする
+  };
+  const path = api.replace(/\{(\w+)\}/g, (m, key) => table[key] || m);
   // 「GET /user」のように メソッド + パス の形で書いてあるので、パス側だけ絶対 URL にする
   return path.replace(/(^|→ )(GET|POST|PUT|PATCH|DELETE) (\/\S*)/g, (m, lead, method, p) => {
     return `${lead}${method} https://api.github.com${p}`;
@@ -222,6 +236,258 @@ function steps(st) {
   ];
 }
 
+/**
+ * 実務編。チームでの流れ（PR → レビュー → バックマージ → 方式を選んでマージ）を
+ * 読み物ではなく実際に動かしてなぞる。同僚役のブランチもこちらで作るので、
+ * ひとりでも「main が進んでしまった」状況を再現できる。
+ */
+function workSteps(st) {
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const who = (st.login || 'you').toLowerCase();
+  const mine = `${BRANCH_PREFIX}${who}-work-${today}`;
+  const mate = `${BRANCH_PREFIX}${who}-teammate-${today}`;
+
+  return [
+    {
+      id: 'w-branch',
+      title: '自分の作業を始める（Feature branch → Pull request）',
+      git: 'git switch -c → commit → push → PR',
+      api: 'POST /repos/{owner}/{repo}/pulls',
+      desc:
+        'ふだんの作業の入り口です。作業ブランチを切って、ファイルを1つ足して、PR を出すところまでを一気にやります。ここは基礎編でやったことの繰り返しなので、まとめて実行します。',
+      label: 'ブランチとPRを作る',
+      async run(gh, s) {
+        await ensureBranch(gh, mine, s.baseBranch);
+        const path = `${PATH_PREFIX}${who}-work.md`;
+        await gh.putFile({
+          path,
+          branch: mine,
+          content: `# ${s.login} の作業\n\n実務編で作ったファイルです。\n`,
+          message: '作業: ファイルを追加',
+        });
+        const pr = await ensurePull(gh, {
+          title: `実務編: ${s.login} の作業`,
+          body: 'Git Quest 実務編。レビューとバックマージを練習するための PR です。',
+          head: mine,
+          base: s.baseBranch,
+        });
+        setRealState({ wBranch: mine, wPr: pr.number, wPrUrl: pr.html_url });
+        log(`作業ブランチ ${mine} と PR #${pr.number} を用意しました`, 'r-ok');
+        return {};
+      },
+      isDone: (s) => !!s.wPr,
+      needsAuth: true,
+    },
+    {
+      id: 'w-mate',
+      title: 'その間に main が進む（同僚のマージ）',
+      git: '（他の人が作業してマージした状態）',
+      api: 'PUT /repos/{owner}/{repo}/pulls/{number}/merge',
+      desc:
+        'あなたがレビューを待っている間に、同僚の PR が先にマージされました。ここでは同僚役のブランチを作り、PR を出して、マージするところまでを自動でやります。これで既定ブランチがあなたの作業より先に進みます。',
+      label: '同僚の変更をマージする',
+      async run(gh, s) {
+        await ensureBranch(gh, mate, s.baseBranch);
+        const path = `${PATH_PREFIX}${who}-teammate.md`;
+        await gh.putFile({
+          path,
+          branch: mate,
+          content: `# 同僚の作業\n\n実務編で「main が進んだ」状況を作るためのファイルです。\n`,
+          message: '同僚: ファイルを追加',
+        });
+        const pr = await ensurePull(gh, {
+          title: `実務編: 同僚の作業（${s.login}）`,
+          body: 'Git Quest 実務編。main を進めるための PR です。',
+          head: mate,
+          base: s.baseBranch,
+        });
+        await gh.mergePull(pr.number, 'squash');
+        log(`同僚の PR #${pr.number} をマージしました → ${s.baseBranch} が進みました`, 'r-ok');
+        await gh.deleteBranch(mate).catch(() => {});
+        setRealState({ wMatePr: pr.number });
+        return {};
+      },
+      isDone: (s) => !!s.wMatePr,
+      needsWorkPr: true,
+    },
+    {
+      id: 'w-behind',
+      title: '自分の PR が遅れたことを確かめる（out-of-date）',
+      git: 'git fetch → git log main..HEAD / HEAD..main',
+      api: 'GET /repos/{owner}/{repo}/compare/{base}...{branch}',
+      vars: { branch: st.wBranch || mine },
+      desc:
+        'PR 画面に「This branch is out-of-date with the base branch」と出るのがこの状態です。compare API は、2つのブランチがどれだけ進んでいる／遅れているかをそのまま返します。',
+      label: '進み具合を調べる',
+      async run(gh, s) {
+        const c = await gh.compare(s.baseBranch, s.wBranch);
+        log(`--- ${s.baseBranch} と ${s.wBranch} の比較 ---`);
+        log(`あなたの方が進んでいる分（ahead_by）: ${c.ahead_by} コミット`);
+        log(`あなたが遅れている分（behind_by）: ${c.behind_by} コミット`, c.behind_by ? 'r-err' : 'r-ok');
+        if (c.behind_by > 0) {
+          log('→ 同僚のマージ分だけ遅れています。この状態が「バックマージが要る」合図です。');
+        }
+        setRealState({ wBehind: c.behind_by });
+        return {};
+      },
+      isDone: (s) => s.wBehind !== null && s.wBehind !== undefined,
+      needsWorkPr: true,
+    },
+    {
+      id: 'w-backmerge',
+      title: 'バックマージする（Update branch）',
+      git: 'git switch <作業ブランチ> → git merge main',
+      api: 'POST /repos/{owner}/{repo}/merges',
+      vars: { branch: st.wBranch || mine },
+      desc:
+        '既定ブランチの内容を、自分の作業ブランチに取り込み直します。向きが「main → 作業ブランチ」でふだんと逆なので、バックマージと呼ばれます。PR 画面の Update branch ボタンと同じ操作です。取り込んだあと、もう一度 compare して遅れが消えたことを確かめます。',
+      label: 'main を取り込む',
+      async run(gh, s) {
+        try {
+          await gh.mergeIntoBranch(s.wBranch, s.baseBranch, `Merge ${s.baseBranch} into ${s.wBranch}`);
+          log(`${s.baseBranch} を ${s.wBranch} に取り込みました`, 'r-ok');
+        } catch (e) {
+          // 既に最新なら 204（本文なし）や「Already merged」が返る
+          if (e.status === 204 || /already merged/i.test(e.message)) {
+            log('既に最新でした（取り込むものがありません）', 'r-ok');
+          } else throw e;
+        }
+        const c = await gh.compare(s.baseBranch, s.wBranch);
+        log(`取り込み後の behind_by: ${c.behind_by}`, c.behind_by ? 'r-err' : 'r-ok');
+        if (c.behind_by === 0) log('→ 遅れが解消しました。安心してマージできます。', 'r-ok');
+        setRealState({ wBackmerged: true, wBehind: c.behind_by });
+        return {};
+      },
+      isDone: (s) => !!s.wBackmerged,
+      needsWorkPr: true,
+    },
+    {
+      id: 'w-review',
+      title: 'レビューする（Approve は自分では押せない）',
+      git: '（git 本体には無い。GitHub の機能）',
+      api: 'POST /repos/{owner}/{repo}/pulls/{number}/reviews',
+      vars: { number: st.wPr || '{number}' },
+      desc:
+        'まず自分の PR を Approve（承認）してみます。GitHub はこれを拒否します — 承認は必ず他の人が行うものだからです。拒否を確かめたあと、Comment としてレビューを残します。実務ではここで指摘が付き、直して push すると PR に自動で反映されます（PR を作り直す必要はありません）。',
+      label: '承認を試す → コメントを残す',
+      async run(gh, s) {
+        try {
+          await gh.reviewPull(s.wPr, 'APPROVE', '自分で承認できるか試します');
+          log('承認できてしまいました（このリポジトリの設定では自己承認が通るようです）', 'r-ok');
+        } catch (e) {
+          log(`想定どおり拒否されました: ${e.data && e.data.message ? e.data.message : e.message}`, 'r-ok');
+          log('→ 承認は他の人が行うもの。これがレビューが仕組みとして成り立つ理由です。');
+        }
+        await gh.reviewPull(s.wPr, 'COMMENT', 'Git Quest 実務編のレビューコメントです。ここで指摘のやりとりをします。');
+        log(`PR #${s.wPr} にレビュー（Comment）を付けました`, 'r-ok');
+        setRealState({ wReviewed: true });
+        return {};
+      },
+      isDone: (s) => !!s.wReviewed,
+      needsWorkPr: true,
+    },
+    {
+      id: 'w-merge',
+      title: 'マージ方式を選んでマージする（3つの違い）',
+      git: 'git merge / git merge --squash / git rebase',
+      api: 'PUT /repos/{owner}/{repo}/pulls/{number}/merge',
+      vars: { number: st.wPr || '{number}' },
+      desc:
+        'GitHub のマージボタンには3つの選択肢があります。どれを選んでも結果の中身は同じで、違いは履歴の残り方です。1つ選んで実行すると、マージ後の履歴を取ってきて見せます。',
+      label: 'マージする',
+      choices: [
+        { value: 'merge', label: 'Create a merge commit', note: 'マージコミットを作る（第5章の 3-way マージ）' },
+        { value: 'squash', label: 'Squash and merge', note: '細かいコミットを1つに潰す' },
+        { value: 'rebase', label: 'Rebase and merge', note: 'つなぎ直して一直線にする（第6章の rebase）' },
+      ],
+      confirm: (s, method) =>
+        `PR #${s.wPr} を ${method} 方式で ${s.baseBranch} にマージし、ブランチ ${s.wBranch} を削除します。\n本当に実行しますか？`,
+      async run(gh, s, method) {
+        try {
+          await gh.mergePull(s.wPr, method);
+        } catch (e) {
+          if (e.status === 405) {
+            // リポジトリ側でその方式が無効なことがある。何が起きたか分かるように言い添える
+            log(`${method} 方式はこのリポジトリでは使えない設定のようです`, 'r-err');
+            log('→ Settings → General → Pull Requests の Allow … merging を確認するか、別の方式を選んでください。');
+          }
+          throw e;
+        }
+        log(`PR #${s.wPr} を ${method} 方式でマージしました`, 'r-ok');
+        await gh.deleteBranch(s.wBranch).catch(() => {});
+        log(`ブランチ ${s.wBranch} を削除しました`, 'r-ok');
+        const commits = await gh.listCommits(s.baseBranch, 5);
+        log(`--- マージ後の ${s.baseBranch} の履歴 ---`);
+        for (const c of commits) log(`${c.sha.slice(0, 7)} ${c.commit.message.split('\n')[0]}`);
+        log(
+          method === 'squash'
+            ? '→ 作業中のコミットが1つにまとまっているのが分かります。'
+            : method === 'rebase'
+              ? '→ マージコミットが増えず、一直線に並んでいます。'
+              : '→ マージコミットが1つ増えています。'
+        );
+        setRealState({ wMerged: method });
+        return {};
+      },
+      isDone: (s) => !!s.wMerged,
+      needsWorkPr: true,
+    },
+    {
+      id: 'w-ci',
+      title: '自動化が呼んでいる API を見る（CI/CD）',
+      git: '（人ではなくツールが呼ぶ）',
+      api: 'GET /repos/{owner}/{repo}/actions/runs',
+      desc:
+        'ここまで手で押してきた API は、実務ではツールが自動で呼びます。GitHub Actions の実行履歴を取ってみると、あなたのリポジトリで動いている自動処理がそのまま見えます。「業務で API を使う」の実体はこれです。',
+      label: '実行履歴を取得する',
+      async run(gh, s) {
+        try {
+          const runs = await gh.listWorkflowRuns(5);
+          if (!runs.total_count) {
+            log('このリポジトリでは GitHub Actions がまだ動いていません（total_count: 0）', 'r-ok');
+            log('→ Actions を設定すると、push のたびにツールが同じ API を呼んでテストや公開を行います。');
+          } else {
+            log(`--- 直近の自動実行（全 ${runs.total_count} 件） ---`);
+            for (const r of runs.workflow_runs || []) {
+              log(`${r.conclusion || r.status}  ${r.name}  ${r.head_branch}  ${r.created_at}`);
+            }
+            log('→ これを動かしているのも、あなたがいま押してきたのと同じ REST API です。');
+          }
+        } catch (e) {
+          if (e.status === 403 || e.status === 404) {
+            log('このトークンでは Actions を読めません（権限か、Actions 未使用のリポジトリです）', 'r-ok');
+          } else throw e;
+        }
+        setRealState({ wSawCi: true });
+        return {};
+      },
+      isDone: (s) => !!s.wSawCi,
+    },
+  ];
+}
+
+/** 既にあれば作らない。同じ日にやり直しても止まらないようにする。 */
+async function ensureBranch(gh, branch, baseBranch) {
+  try {
+    await gh.createBranch(branch, baseBranch);
+    log(`ブランチ ${branch} を作りました`, 'r-ok');
+  } catch (e) {
+    if (e.status === 422) log(`ブランチ ${branch} は既にあるので、それを使います`, 'r-ok');
+    else throw e;
+  }
+}
+
+/** 同じブランチの open な PR があれば使い回す。 */
+async function ensurePull(gh, { title, body, head, base }) {
+  const existing = await gh.listPulls(head);
+  const open = existing.find((p) => p.state === 'open');
+  if (open) {
+    log(`既に PR #${open.number} があるので、それを使います`, 'r-ok');
+    return open;
+  }
+  return gh.createPull({ title, body, head, base });
+}
+
 // ---------------------------------------------------------------- 画面
 
 export function renderRealMode(root, { onBack }) {
@@ -359,7 +625,28 @@ export function renderRealMode(root, { onBack }) {
       call.ok ? 'r-ok' : 'r-err');
   });
 
-  const list = steps(st);
+  const redraw = () => renderRealMode(root, { onBack });
+
+  appendSectionTitle(root, '基礎編', 'git のふだんの操作が、API ではどう表されるかを1つずつ確かめます。');
+  renderSteps(root, steps(st), st, gh, redraw);
+  appendPrLink(root, st.prUrl, st.prNumber, '作成した PR を GitHub で開く');
+
+  appendSectionTitle(
+    root,
+    '実務編 — チームでの流れをなぞる',
+    'ここからは、実際の仕事で毎日起きることを順番に体験します。' +
+      '同僚役のブランチもこちらで作るので、ひとりでも「レビュー待ちの間に main が進んでしまった」状況を再現できます。'
+  );
+  renderSteps(root, workSteps(st), st, gh, redraw);
+  appendPrLink(root, st.wPrUrl, st.wPr, '実務編の PR を GitHub で開く');
+
+  appendRestart(root, onBack);
+  appendPractice(root);
+  appendBack(root, onBack);
+}
+
+/** ステップ一覧を描く。基礎編と実務編で同じ見た目を使う。 */
+function renderSteps(root, list, st, gh, redraw) {
   list.forEach((step, i) => {
     const done = step.isDone(st);
     const prevDone = i === 0 || list[i - 1].isDone(st);
@@ -396,7 +683,7 @@ export function renderRealMode(root, { onBack }) {
     // プレースホルダを実際の値に展開したもの。押す前に「どこを触るのか」を見せる。
     const url = document.createElement('div');
     url.className = 'api-url';
-    url.textContent = realUrl(step.api, st);
+    url.textContent = realUrl(step.api, st, step.vars);
     body.appendChild(url);
 
     const d = document.createElement('p');
@@ -404,48 +691,86 @@ export function renderRealMode(root, { onBack }) {
     d.appendChild(markup(step.desc));
     body.appendChild(d);
 
-    const btn = document.createElement('button');
-    btn.className = done ? 'ghost-btn' : 'primary-btn';
-    btn.textContent = done ? `${step.label}（もう一度）` : step.label;
-    btn.disabled = !prevDone || (step.needsPr && !st.prNumber);
-    btn.addEventListener('click', async () => {
+    const blocked =
+      !prevDone ||
+      (step.needsAuth && !st.baseBranch) ||
+      (step.needsPr && !st.prNumber) ||
+      (step.needsWorkPr && !st.wPr);
+
+    /** 実行の共通処理。choices があるときは選んだ値を渡す。 */
+    const runStep = async (btn, choice) => {
       const current = load();
-      if (step.confirm && !confirm(step.confirm(current))) return;
-      btn.disabled = true;
+      if (step.confirm && !confirm(step.confirm(current, choice))) return;
       const original = btn.textContent;
+      btn.disabled = true;
       btn.textContent = '実行中…';
       try {
-        await step.run(gh, current);
-        renderRealMode(root, { onBack });
+        await step.run(gh, current, choice);
+        redraw();
       } catch (e) {
         if (e instanceof SafetyError) log('安全チェックで停止: ' + e.message, 'r-err');
         else log('失敗: ' + e.message, 'r-err');
         btn.disabled = false;
         btn.textContent = original;
       }
-    });
-    body.appendChild(btn);
+    };
+
+    if (step.choices) {
+      // マージ方式のように「どれか1つを選んで実行する」ステップ
+      for (const c of step.choices) {
+        const row = document.createElement('div');
+        row.className = 'choice-row';
+        const btn = document.createElement('button');
+        btn.className = done ? 'ghost-btn' : 'primary-btn';
+        btn.textContent = done && st.wMerged === c.value ? `${c.label}（実行済み）` : c.label;
+        btn.disabled = blocked;
+        btn.addEventListener('click', () => runStep(btn, c.value));
+        row.appendChild(btn);
+        const note = document.createElement('span');
+        note.className = 'choice-note';
+        note.textContent = c.note;
+        row.appendChild(note);
+        body.appendChild(row);
+      }
+    } else {
+      const btn = document.createElement('button');
+      btn.className = done ? 'ghost-btn' : 'primary-btn';
+      btn.textContent = done ? `${step.label}（もう一度）` : step.label;
+      btn.disabled = blocked;
+      btn.addEventListener('click', () => runStep(btn));
+      body.appendChild(btn);
+    }
 
     box.appendChild(body);
     root.appendChild(box);
   });
+}
 
-  if (st.prUrl) {
-    const link = document.createElement('p');
-    link.style.margin = '4px 0 12px';
-    const a = document.createElement('a');
-    a.href = st.prUrl;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.textContent = `作成した PR を GitHub で開く（#${st.prNumber}）`;
-    a.style.color = 'var(--accent)';
-    link.appendChild(a);
-    root.appendChild(link);
-  }
+function appendSectionTitle(root, title, desc) {
+  const wrap = document.createElement('section');
+  wrap.className = 'q-card section-title';
+  const h = document.createElement('h3');
+  h.textContent = title;
+  wrap.appendChild(h);
+  const p = document.createElement('p');
+  p.className = 'fine';
+  p.appendChild(markup(desc));
+  wrap.appendChild(p);
+  root.appendChild(wrap);
+}
 
-  appendRestart(root, onBack);
-  appendPractice(root);
-  appendBack(root, onBack);
+function appendPrLink(root, prUrl, number, label) {
+  if (!prUrl) return;
+  const link = document.createElement('p');
+  link.style.margin = '4px 0 12px';
+  const a = document.createElement('a');
+  a.href = prUrl;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.textContent = `${label}（#${number}）`;
+  a.style.color = 'var(--accent)';
+  link.appendChild(a);
+  root.appendChild(link);
 }
 
 function appendLog(root) {
@@ -564,7 +889,7 @@ function appendPractice(root) {
   const wrap = document.createElement('details');
   wrap.className = 'q-card prep-box';
   const sum = document.createElement('summary');
-  sum.textContent = 'これは実務のどこで使う？（API と、ふだんの PR の流れ）';
+  sum.textContent = 'まとめ: 実務のどこで使う？（上の実務編でやったことの整理）';
   wrap.appendChild(sum);
 
   const blocks = [
