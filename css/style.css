@@ -1302,6 +1302,49 @@ code,
   color: var(--purple);
 }
 
+/* ステップが実際に叩く URL。長いので折り返して全部見せる。 */
+.api-url {
+  margin: -2px 0 10px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--line);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--fg-faint);
+  word-break: break-all;
+}
+
+/* 折りたたみの補足（リポジトリの用意 / 実務での使われ方） */
+.prep-box > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--accent);
+}
+
+.prep-box > summary::marker {
+  color: var(--fg-faint);
+}
+
+.prep-steps,
+.practice-list {
+  margin: 6px 0 0;
+  padding-left: 1.3em;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--fg-dim);
+}
+
+.prep-steps li,
+.practice-list li {
+  margin-bottom: 4px;
+}
+
+.practice-h {
+  margin: 14px 0 0;
+  font-size: 13.5px;
+}
+
 .real-log {
   margin-top: 10px;
   padding: 10px 12px;

@@ -101,3 +101,13 @@ export function clearRealState() {
     /* noop */
   }
 }
+
+/** 第8章の進捗だけを消す。接続設定（トークン・オーナー・リポジトリ）は残す。 */
+export function resetRealProgress() {
+  try {
+    const { token, owner, repo } = getRealState();
+    localStorage.setItem(REAL_KEY, JSON.stringify({ token, owner, repo }));
+  } catch {
+    /* noop */
+  }
+}

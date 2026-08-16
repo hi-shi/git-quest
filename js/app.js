@@ -285,7 +285,14 @@ function showView(name) {
     t.classList.toggle('is-active', t.dataset.view === name);
   }
   if (name === 'real') {
-    renderRealMode(els.realBody, { onBack: () => showView('quest') });
+    // 章の一覧へ戻す。quest へ戻すだけだと、直前に開いていた章（第7章など）が出て
+    // 「なぜ戻ったのか」が分からなかった。
+    renderRealMode(els.realBody, {
+      onBack: () => {
+        showView('quest');
+        openDrawer();
+      },
+    });
   }
   if (name === 'cheat') {
     renderCheatsheet(els.cheatBody, { onBack: () => showView('quest') });

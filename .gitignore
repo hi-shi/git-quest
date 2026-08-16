@@ -3,3 +3,6 @@ failure.log
 
 # macOS
 .DS_Store
+
+# 別リポジトリの練習用ディレクトリ
+git-study/
