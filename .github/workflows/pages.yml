@@ -52,6 +52,15 @@ jobs:
         with:
           # Pages が未設定なら自動で有効化する（手動設定の取りこぼしを防ぐ）
           enablement: true
+
+      # sw.js のバイト列が変わらないと、ブラウザは新しい版に気づかない。
+      # 手でキャッシュ名を上げるのを忘れると「更新したのに古いまま」になるので、
+      # 公開のたびにコミット SHA を埋めて必ず変わるようにする。
+      - name: Service Worker のキャッシュ名にコミット SHA を埋める
+        run: |
+          sed -i "s/^const CACHE = .*/const CACHE = 'git-quest-${GITHUB_SHA::7}';/" sw.js
+          grep -m1 '^const CACHE' sw.js
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .

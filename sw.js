@@ -1,7 +1,9 @@
 // Service Worker。アプリシェルを precache して、電波が無くても第1〜7章が遊べるようにする。
 // 第8章だけは GitHub API を叩くのでネットワークが要る。
 
-const CACHE = 'git-quest-v6';
+// 公開時にワークフローがコミット SHA へ書き換える（.github/workflows/pages.yml）。
+// ここの値はローカルで開いたときにだけ使われる。
+const CACHE = 'git-quest-dev';
 
 const SHELL = [
   './',
