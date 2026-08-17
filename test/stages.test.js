@@ -118,6 +118,36 @@ const SOLUTIONS = {
     'git fetch origin main:main',
     'git branch',
   ],
+
+  // ---- 第8章 修了試験（手順を教えない章。判定は最終状態だけ）
+  'exam-1': [
+    'git status',
+    'echo "debug.log" > .gitignore',
+    'echo "secret.env" >> .gitignore',
+    'git add .',
+    'git commit -m "片付け: 生成物と秘密ファイルを無視する"',
+    'git branch -d feature/old',
+    'git status',
+  ],
+  'exam-2': [
+    'git switch feature/chart',
+    'git rebase main',
+    'git switch main',
+    'git merge feature/chart',
+    'git branch -d feature/chart',
+  ],
+  'exam-3': [
+    'git status',
+    'git log --oneline',
+    'git branch',
+    'echo "練習" >> memo.txt',
+    'git diff',
+    'git add memo.txt',
+    'git commit -m "練習で追記"',
+    'git log --oneline',
+    'git reflog',
+    'git status',
+  ],
 };
 
 /** 解答を流して最終状態を返す。 */
@@ -205,7 +235,7 @@ test('newlyDone は新しく達成した目標だけを返す', () => {
 });
 
 test('章の構成が壊れていない', () => {
-  assert.equal(CHAPTERS.length, 7);
+  assert.equal(CHAPTERS.length, 8);
   for (const ch of CHAPTERS) {
     assert.ok(ch.title && ch.subtitle && ch.blurb, `${ch.id} のメタ情報が欠けている`);
     assert.ok(ch.stages.length > 0);

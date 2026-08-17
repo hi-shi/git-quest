@@ -180,9 +180,9 @@ function onStageCleared() {
     kind: 'sys',
     text: nextStage
       ? `「⊞ 状態」画面で今の状態を確認できます。準備ができたら次のステージへ。\n次は「${nextStage.title}」です。`
-      : '「⊞ 状態」画面で今の状態を確認できます。第1〜7章はこれで終わりです。',
+      : '「⊞ 状態」画面で今の状態を確認できます。第1〜8章はこれで終わりです。',
   });
-  terminal.writeAction(nextStage ? `次のステージへ: ${nextStage.title}` : '第8章（GitHub 実践）へ', () =>
+  terminal.writeAction(nextStage ? `次のステージへ: ${nextStage.title}` : '第9章（GitHub 実践）へ', () =>
     goNext()
   );
 }
@@ -206,9 +206,9 @@ function renderAll() {
     return;
   }
 
-  // 第8章は擬似リポジトリの外なので、見出しも目標の帯も専用の表示にする
+  // 第9章は擬似リポジトリの外なので、見出しも目標の帯も専用の表示にする
   if (state.view === 'real') {
-    els.stageChapter.textContent = '第8章 GitHub 実践';
+    els.stageChapter.textContent = '第9章 GitHub 実践';
     els.stageName.textContent = '本物のリポジトリを動かす';
     els.goalbar.innerHTML = '';
     const pip = document.createElement('span');

@@ -182,12 +182,12 @@ export function renderChapterList(
     listEl.appendChild(block);
   }
 
-  // 第7章は擬似リポジトリではなく、本物の GitHub を触る特別な章
+  // 第9章は擬似リポジトリではなく、本物の GitHub を触る特別な章
   const block = document.createElement('div');
   block.className = 'ch-block';
   const title = document.createElement('div');
   title.className = 'ch-title';
-  title.textContent = '第8章 GitHub 実践';
+  title.textContent = '第9章 GitHub 実践';
   block.appendChild(title);
   const sub = document.createElement('div');
   sub.className = 'ch-sub';

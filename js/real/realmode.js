@@ -1,4 +1,4 @@
-// 第8章「GitHub 実践」の画面。
+// 第9章「GitHub 実践」の画面。
 // 擬似リポジトリではなく、本物の GitHub を相手にする。
 // 各ステップで「対応する git コマンド」と「実際に呼ぶ API」を並べて見せるのが狙い。
 
@@ -132,7 +132,7 @@ function steps(st) {
       async run(gh, s) {
         const path = `${PATH_PREFIX}${(s.login || 'you').toLowerCase()}.md`;
         const now = new Date().toLocaleString('ja-JP');
-        const content = `# ${s.login} の練習ファイル\n\nGit Quest 第8章から作成しました。\n\n- 作成日時: ${now}\n- ブランチ: ${s.branch}\n`;
+        const content = `# ${s.login} の練習ファイル\n\nGit Quest 第9章から作成しました。\n\n- 作成日時: ${now}\n- ブランチ: ${s.branch}\n`;
         const res = await gh.putFile({
           path,
           branch: s.branch,
@@ -179,9 +179,9 @@ function steps(st) {
           return { prNumber: open.number, prUrl: open.html_url };
         }
         const pr = await gh.createPull({
-          title: `練習: ${s.login} の Git Quest 第8章`,
+          title: `練習: ${s.login} の Git Quest 第9章`,
           body:
-            'Git Quest（学習アプリ）の第8章から作成した練習用の Pull Request です。\n\n' +
+            'Git Quest（学習アプリ）の第9章から作成した練習用の Pull Request です。\n\n' +
             `- ブランチ: \`${s.branch}\`\n- 追加ファイル: \`${s.filePath}\`\n`,
           head: s.branch,
           base: s.baseBranch,
@@ -498,7 +498,7 @@ export function renderRealMode(root, { onBack }) {
   const head = document.createElement('section');
   head.className = 'q-card';
   const h = document.createElement('h3');
-  h.textContent = '第8章 GitHub 実践 — 本物のリポジトリを動かす';
+  h.textContent = '第9章 GitHub 実践 — 本物のリポジトリを動かす';
   head.appendChild(h);
   const lead = document.createElement('p');
   lead.className = 'q-intro';
@@ -589,7 +589,7 @@ export function renderRealMode(root, { onBack }) {
   forgetBtn.className = 'ghost-btn';
   forgetBtn.textContent = 'トークンと進捗を消す';
   forgetBtn.addEventListener('click', () => {
-    if (!confirm('保存したトークンと第8章の進捗を消します。よろしいですか？')) return;
+    if (!confirm('保存したトークンと第9章の進捗を消します。よろしいですか？')) return;
     clearRealState();
     logLines = [];
     renderRealMode(root, { onBack });
@@ -608,7 +608,7 @@ export function renderRealMode(root, { onBack }) {
     locked.appendChild(big);
     const p = document.createElement('p');
     p.textContent =
-      'トークンを入力して保存すると、ここから先のステップが使えるようになります。第1〜7章はトークン無しで全部遊べます。';
+      'トークンを入力して保存すると、ここから先のステップが使えるようになります。第1〜8章はトークン無しで全部遊べます。';
     locked.appendChild(p);
     root.appendChild(locked);
     appendLog(root);
@@ -869,9 +869,9 @@ function appendRestart(root, onBack) {
   row.className = 'q-actions';
   const b = document.createElement('button');
   b.className = 'primary-btn';
-  b.textContent = '第8章を最初からやり直す';
+  b.textContent = '第9章を最初からやり直す';
   b.addEventListener('click', () => {
-    if (!confirm('第8章の進捗を消して、ステップ1からやり直します。\nトークンと接続設定は残ります。')) return;
+    if (!confirm('第9章の進捗を消して、ステップ1からやり直します。\nトークンと接続設定は残ります。')) return;
     resetRealProgress();
     logLines = [];
     renderRealMode(root, { onBack });

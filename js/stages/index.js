@@ -5,7 +5,7 @@
 //   goals[].check(repo, ctx) : 達成判定。ctx.history に実行したコマンド行が入る
 //   wantedCommands : 想定した解法。通らなくてもクリアはできる（別解の提示に使う）
 
-import { createRepo, initRepo, headCommit, currentBranch, readCommit, status, resolveRev, isAncestor, commitTree, readBlob, listBranches, ancestors } from '../engine/repo.js';
+import { createRepo, initRepo, headCommit, currentBranch, readCommit, status, resolveRev, isAncestor, commitTree, readBlob, listBranches, ancestors, isIgnored } from '../engine/repo.js';
 import { runLine } from '../engine/shell.js';
 import { cwdRel, inRepo } from '../engine/paths.js';
 
@@ -1853,7 +1853,188 @@ const ch6 = {
   ],
 };
 
-export const CHAPTERS = [ch1, chCwd, ch2, ch3, ch4, ch5, ch6];
+// =================================================================== 第8章
+
+/**
+ * 修了試験。ここまでの章と違い「打つコマンド」を教えない。
+ * 目指す状態だけを示し、そこへ辿り着く道は自分で組み立てる。
+ * 判定も最終状態だけを見るので、別のやり方でも通る。
+ */
+const chExam = {
+  id: 'exam',
+  title: '第8章 修了試験',
+  subtitle: '総合演習 / 自由練習',
+  blurb:
+    'ここからは手順を教えません。「こういう状態にしてください」だけが示されるので、使うコマンドは自分で決めてください。判定は最終状態だけを見るので、思いついたやり方で構いません。',
+  stages: [
+    {
+      id: 'exam-1',
+      title: '散らかったリポジトリを片付ける',
+      intro:
+        '前任者から引き継いだリポジトリが散らかっています。次の状態にしてください。手順は示しません。\n' +
+        '\n' +
+        '　1. `debug.log` と `secret.env` は git の管理から外す（消さずに、status にも出ないようにする）\n' +
+        '　2. app.js の編集をコミットする\n' +
+        '　3. 使っていないブランチ `feature/old` を消す\n' +
+        '　4. 最後に `git status` が「何も無い」状態になっている\n' +
+        '\n' +
+        'まず `git status` と `git branch` で、いまどうなっているかを確かめるところから。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "# 家計簿アプリ" > README.md
+          echo "console.log('start');" > app.js
+          git add .
+          git commit -m "初版"
+          git branch feature/old
+          echo "console.log('合計を計算');" >> app.js
+          git add app.js
+          echo "2026-08-17 起動しました" > debug.log
+          echo "DB_PASSWORD=hunter2" > secret.env
+        `);
+      },
+      goals: [
+        {
+          text: 'debug.log と secret.env が status に出なくなっている',
+          check: (r) => isIgnored(r, 'debug.log') && isIgnored(r, 'secret.env'),
+        },
+        {
+          text: 'app.js の編集がコミットに入っている',
+          check: (r) => {
+            const head = commitTree(r, headCommit(r));
+            return !!head['app.js'] && readBlob(r, head['app.js']).includes('合計を計算');
+          },
+        },
+        {
+          text: 'feature/old が消えている',
+          check: (r) => !listBranches(r).includes('feature/old'),
+        },
+        {
+          text: 'git status に何も残っていない（未追跡も含めて）',
+          check: (r) => clean(r) && !status(r).untracked.length,
+        },
+        {
+          text: 'debug.log と secret.env はファイルとして残っている',
+          check: (r) => 'debug.log' in r.workdir && 'secret.env' in r.workdir,
+        },
+      ],
+      hints: [
+        'まず `git status` で「何がステージに乗っていて、何が未追跡か」を見てください。`git branch` でブランチも確認。',
+        '管理から外すのは第3章でやった `.gitignore` です。作った `.gitignore` 自体はコミットが必要です（さもないと未追跡のまま残ります）。',
+        'ブランチの削除は第4章の `git branch -d`。今いるブランチは消せないので、`main` にいることを確かめてから。',
+        '答え: `echo "debug.log" > .gitignore` → `echo "secret.env" >> .gitignore` → `git add .` → `git commit -m "片付け"` → `git branch -d feature/old`。',
+      ],
+      teach: [
+        '「status がきれい」は、staged / unstaged / 未追跡のどれも無い状態です。未追跡を消すには、コミットするか無視するかの2択。',
+        '`.gitignore` を作っただけでは片付きません。`.gitignore` 自身がコミットされて初めて、他の人の手元でも同じ扱いになります。',
+        'ファイルを消さずに管理から外す、が今回の要点です。`rm` してしまうと必要なファイルを失います。',
+      ],
+    },
+    {
+      id: 'exam-2',
+      title: '履歴を一直線にして取り込む',
+      intro:
+        'feature/chart を main に取り込みます。ただし、あとから履歴を読む人のために次の条件を満たしてください。手順は示しません。\n' +
+        '\n' +
+        '　1. feature/chart の変更が main に入っている\n' +
+        '　2. 履歴にマージコミットが1つも無い（枝分かれの跡が残っていない）\n' +
+        '　3. 取り込み済みの feature/chart は消えている\n' +
+        '　4. `git status` がきれい\n' +
+        '\n' +
+        '`git log --oneline --graph --all` と「⊞ 状態」のグラフで、形を確かめながら進めてください。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "# ダッシュボード" > README.md
+          git add .
+          git commit -m "初版"
+          git switch -c feature/chart
+          echo "円グラフを描く" > chart.js
+          git add .
+          git commit -m "円グラフを追加"
+          git switch main
+          echo "月ごとの集計" > summary.js
+          git add .
+          git commit -m "集計を追加"
+        `);
+      },
+      goals: [
+        {
+          text: 'main に chart.js が入っている',
+          check: (r) => committed(r, 'chart.js') && currentBranch(r) === 'main',
+        },
+        {
+          text: '履歴にマージコミットが無い（親が2つのコミットが無い）',
+          check: (r) => {
+            const head = headCommit(r);
+            if (!head) return false;
+            return [...ancestors(r, head)].every((sha) => readCommit(r, sha).parents.length <= 1);
+          },
+        },
+        {
+          text: 'feature/chart が消えている',
+          check: (r) => !listBranches(r).includes('feature/chart'),
+        },
+        { text: 'git status がきれい', check: (r) => clean(r) },
+      ],
+      hints: [
+        'そのまま `git merge` するとマージコミットができてしまいます。第6章でやった、枝の付け根を付け替える方法を思い出してください。',
+        '付け替えるのは feature/chart 側です。`feature/chart` に移ってから main を土台にし直すと、main から見て一直線に繋がります。',
+        'そのあと main に戻ってマージすると、付け替え済みなので fast-forward になり、マージコミットは作られません。',
+        '答え: `git switch feature/chart` → `git rebase main` → `git switch main` → `git merge feature/chart` → `git branch -d feature/chart`。',
+      ],
+      teach: [
+        'rebase してから merge すると fast-forward になり、履歴が一直線に保たれます。「rebase して取り込む」と呼ばれる形です。',
+        'cherry-pick でも同じ状態に持っていけます。コミットが1つなら手数はほぼ同じです。',
+        'どちらが良いかはチームの方針次第です。マージコミットを残す形にも「いつ取り込んだか」が分かる利点があります。',
+      ],
+    },
+    {
+      id: 'exam-3',
+      title: '自由練習',
+      intro:
+        '試験はここまでです。最後は自由に触る場所です。目標も手順もありません。\n' +
+        '\n' +
+        '壊しても大丈夫です。右上の ↻ でいつでも最初の状態に戻せます。\n' +
+        '`git reset --hard` や `git rebase` のような、本番では緊張する操作をここで試しておくと度胸がつきます。\n' +
+        '`help` で使えるコマンドの一覧、`git help <コマンド>` で個別の説明が出ます。\n' +
+        '\n' +
+        '一応の目標として、「10回コマンドを打つ」と「最後に status をきれいにする」の2つだけ置いてあります。',
+      setup(repo) {
+        seed(repo, `
+          git init
+          echo "# 練習帳" > README.md
+          echo "ここは自由に書き換えてください" > memo.txt
+          git add .
+          git commit -m "初版"
+          git commit --amend -m "初版"
+        `);
+      },
+      goals: [
+        {
+          text: '何でもいいので、コマンドを10回実行する',
+          check: (r, ctx) => ctx.history.length >= 10,
+        },
+        {
+          text: '最後に git status をきれいにする（未追跡も残さない）',
+          check: (r) => clean(r) && !status(r).untracked.length,
+        },
+      ],
+      hints: [
+        '思いつかないときは、ブランチを切って別々に編集し、わざと衝突させて解消してみてください。第5章の復習になります。',
+        '`git reflog` を眺めると、自分がやったことが全部残っているのが分かります。消したつもりのコミットも辿れます。',
+        '散らかしたら `git add -A` → `git commit`、または `git restore` と `git clean -f` で片付けられます。',
+      ],
+      teach: [
+        'ここまでで、ふだんの開発で使うコマンドはひと通り触りました。あとは実際のリポジトリで手を動かすのがいちばん早く身につきます。',
+        '本物の GitHub を触る第9章が残っています。トークンを用意すれば、PR とレビューまで通して体験できます。',
+        '迷ったら「？ 逆引き」のチートシートから引いてください。やりたいことからコマンドを探せます。',
+      ],
+    },
+  ],
+};
+
+export const CHAPTERS = [ch1, chCwd, ch2, ch3, ch4, ch5, ch6, chExam];
 
 /** 全ステージを1本のリストに。 */
 export const ALL_STAGES = CHAPTERS.flatMap((ch) =>
