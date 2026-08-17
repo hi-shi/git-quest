@@ -540,8 +540,10 @@ body {
   max-height: 50vh;
 }
 
-/* 横に余裕があれば左右2カラム。グラフを見ながらファイルの動きも追える */
-@media (min-width: 760px) {
+/* 横に余裕があれば左右2カラム。グラフを見ながらファイルの動きも追える。
+   1000px 以上は「ターミナル | 状態」の2カラムになり、状態の中は縦積みに戻す
+   （右カラムの幅では3列比較と並べると窮屈なため）。 */
+@media (min-width: 760px) and (max-width: 999px) {
   #view-state {
     flex-direction: row;
     overflow: hidden;
@@ -1473,6 +1475,79 @@ code,
   }
   body {
     font-size: 15.5px;
+  }
+}
+
+/* ---------------------------------------------------------------- PC（2カラム）
+
+   ターミナルを左に出したまま、右側だけをタブで切り替える。
+   コマンドを打つとグラフが動く様子を、画面を行き来せずに見られるようにする。 */
+
+@media (min-width: 1000px) {
+  #views {
+    display: grid;
+    grid-template-columns: minmax(340px, 1fr) minmax(380px, 1.15fr);
+    grid-template-rows: 100%;
+  }
+
+  /* 絶対配置をやめてグリッドのセルに置く */
+  .view {
+    position: relative;
+    inset: auto;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* ターミナルは常に左。タブの選択とは無関係に出しておく */
+  #view-terminal {
+    display: flex;
+    grid-column: 1;
+    grid-row: 1;
+    border-right: 1px solid var(--line);
+  }
+
+  /* 選ばれている画面を右へ。ターミナルは上の指定で左に固定されている */
+  .view.is-active:not(#view-terminal) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  /* 右カラムは上下に分割する。ターミナル・グラフ・ファイルの3つが同時に見える。
+     ページ全体はスクロールさせず、はみ出す分はそれぞれの枠の中で送る。 */
+  #view-state {
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #view-state .state-pane {
+    flex: 1 1 50%;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  #view-state .state-pane + .state-pane {
+    margin-top: 0;
+    border-top: 1px solid var(--line);
+    border-left: none;
+  }
+
+  #view-state .graph-scroll {
+    flex: 1;
+    max-height: none;
+  }
+
+  /* 枠自身がスクロールするので、詳細の高さ上限は外す */
+  #view-state .file-detail {
+    max-height: none;
+  }
+
+  /* ターミナルは出しっぱなしなので、タブから外す */
+  #tabbar {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  #tabbar .tab[data-view="terminal"] {
+    display: none;
   }
 }
 

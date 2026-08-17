@@ -277,7 +277,16 @@ function goNext() {
 
 // ---------------------------------------------------------------- 画面切替
 
+// PC の広い画面では、ターミナルを左に出したまま右側だけを切り替える（CSS 側で2カラム）。
+// 打ったコマンドでグラフが動くのを、画面を行き来せずに見られるようにするため。
+const wideScreen = window.matchMedia('(min-width: 1000px)');
+
 function showView(name) {
+  // 2カラムのときターミナルは常に見えているので、右側は「状態」を出す
+  if (wideScreen.matches && name === 'terminal') {
+    els.termInput.focus();
+    name = 'state';
+  }
   state.view = name;
   for (const v of document.querySelectorAll('.view')) {
     v.classList.toggle('is-active', v.id === 'view-' + name);
@@ -299,12 +308,19 @@ function showView(name) {
     renderCheatsheet(els.cheatBody, { onBack: () => showView('quest') });
   }
   renderAll();
-  if (name === 'terminal') terminal.scrollToEnd();
+  // 2カラムではターミナルが出しっぱなしなので、どの画面でも末尾に追従させる
+  if (name === 'terminal' || wideScreen.matches) terminal.scrollToEnd();
 }
 
 for (const tab of document.querySelectorAll('.tab')) {
   tab.addEventListener('click', () => showView(tab.dataset.view));
 }
+
+// ウィンドウ幅が境界をまたいだとき、1カラムでターミナルを見ていた人が
+// 2カラムで右側が空になってしまうのを防ぐ。
+wideScreen.addEventListener('change', () => {
+  showView(state.view === 'terminal' ? 'state' : state.view);
+});
 
 // ---------------------------------------------------------------- 引き出し
 
