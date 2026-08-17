@@ -61,25 +61,28 @@
       </section>
 
       <!-- ===== グラフ ===== -->
-      <section id="view-graph" class="view" aria-label="コミットグラフ">
-        <div class="view-head">
-          <h2>コミットグラフ</h2>
-          <p class="view-sub">丸=コミット / 色の付いた札=ブランチ / 太い枠=今いる場所（HEAD）</p>
+      <!-- ===== 状態（グラフ + ファイル）===== -->
+      <!-- 広い画面では左右2カラム、スマホでは縦に並ぶ。CSS 側で切り替える。 -->
+      <section id="view-state" class="view" aria-label="リポジトリの状態">
+        <div class="state-pane">
+          <div class="view-head">
+            <h2>コミットグラフ</h2>
+            <p class="view-sub">丸=コミット / 色の付いた札=ブランチ / 太い枠=今いる場所（HEAD）</p>
+          </div>
+          <div id="graph-scroll" class="graph-scroll"></div>
+          <div id="graph-legend" class="legend"></div>
         </div>
-        <div id="graph-scroll" class="graph-scroll"></div>
-        <div id="graph-legend" class="legend"></div>
-      </section>
 
-      <!-- ===== ファイル ===== -->
-      <section id="view-files" class="view" aria-label="ファイルの状態">
-        <div class="view-head">
-          <h2>3つの場所</h2>
-          <p class="view-sub">
-            git はファイルを3か所で管理します。add はまん中へ、commit は右へ動かす操作です。
-          </p>
+        <div class="state-pane">
+          <div class="view-head">
+            <h2>3つの場所</h2>
+            <p class="view-sub">
+              git はファイルを3か所で管理します。add はまん中へ、commit は右へ動かす操作です。
+            </p>
+          </div>
+          <div id="files-grid" class="files-grid"></div>
+          <div id="file-detail" class="file-detail"></div>
         </div>
-        <div id="files-grid" class="files-grid"></div>
-        <div id="file-detail" class="file-detail"></div>
       </section>
 
       <!-- ===== クエスト ===== -->
@@ -103,11 +106,8 @@
       <button class="tab is-active" data-view="terminal">
         <span class="tab-ico mono">&gt;_</span><span class="tab-label">ターミナル</span>
       </button>
-      <button class="tab" data-view="graph">
-        <span class="tab-ico">⑂</span><span class="tab-label">グラフ</span>
-      </button>
-      <button class="tab" data-view="files">
-        <span class="tab-ico">▤</span><span class="tab-label">ファイル</span>
+      <button class="tab" data-view="state">
+        <span class="tab-ico">⊞</span><span class="tab-label">状態</span>
       </button>
       <button class="tab" data-view="quest">
         <span class="tab-ico">◎</span><span class="tab-label">クエスト</span>

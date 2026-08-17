@@ -179,8 +179,8 @@ function onStageCleared() {
   terminal.write({
     kind: 'sys',
     text: nextStage
-      ? `グラフ・ファイル画面で今の状態を確認できます。準備ができたら次のステージへ。\n次は「${nextStage.title}」です。`
-      : 'グラフ・ファイル画面で今の状態を確認できます。第1〜7章はこれで終わりです。',
+      ? `「⊞ 状態」画面で今の状態を確認できます。準備ができたら次のステージへ。\n次は「${nextStage.title}」です。`
+      : '「⊞ 状態」画面で今の状態を確認できます。第1〜7章はこれで終わりです。',
   });
   terminal.writeAction(nextStage ? `次のステージへ: ${nextStage.title}` : '第8章（GitHub 実践）へ', () =>
     goNext()
@@ -237,8 +237,9 @@ function renderAll() {
 
   terminal.renderChips(repo, stage);
 
-  if (state.view === 'graph') renderGraph(els.graphScroll, els.graphLegend, repo);
-  if (state.view === 'files') {
+  // グラフとファイルは同じ「状態」画面に同居する
+  if (state.view === 'state') {
+    renderGraph(els.graphScroll, els.graphLegend, repo);
     renderFiles(els.filesGrid, els.fileDetail, repo, {
       selected: state.selectedFile,
       onSelect: (p) => {
@@ -351,7 +352,7 @@ function openEditor(path) {
   const repo = state.session.repo;
   if (!(path in repo.workdir)) repo.workdir[path] = '';
   state.editingFile = path;
-  // ファイル画面の「編集」ボタンから開いた場合も、`edit <file>` を打ったのと同じ扱いにする
+  // 状態画面の「編集」ボタンから開いた場合も、`edit <file>` を打ったのと同じ扱いにする
   const asCommand = `edit ${path}`;
   if (state.session.ctx.history[state.session.ctx.history.length - 1] !== asCommand) {
     state.session.ctx.history.push(asCommand);

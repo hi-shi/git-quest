@@ -506,6 +506,69 @@ body {
   font-size: 13px;
 }
 
+/* ---------------------------------------------------------------- 状態（グラフ + ファイル）
+
+   1画面にグラフと3列表示を同居させる。
+   狭い画面はページ全体を縦スクロールし、グラフだけ高さを抑えて
+   「下にファイルが続いている」ことが分かるようにする。 */
+
+#view-state {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#view-state .state-pane {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#view-state .state-pane + .state-pane {
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+/* 画面を食い尽くさないよう上限を付ける。溢れた分はこの中でスクロールする */
+#view-state .graph-scroll {
+  flex: none;
+  max-height: 45vh;
+}
+
+/* 元の 42% は高さの決まった親が前提だった。縦スクロールでは vh で抑える */
+#view-state .file-detail {
+  max-height: 50vh;
+}
+
+/* 横に余裕があれば左右2カラム。グラフを見ながらファイルの動きも追える */
+@media (min-width: 760px) {
+  #view-state {
+    flex-direction: row;
+    overflow: hidden;
+  }
+
+  #view-state .state-pane {
+    flex: 1 1 50%;
+    min-width: 0;
+    overflow-y: auto;
+  }
+
+  #view-state .state-pane + .state-pane {
+    margin-top: 0;
+    border-top: none;
+    border-left: 1px solid var(--line);
+  }
+
+  #view-state .graph-scroll {
+    flex: 1;
+    max-height: none;
+  }
+
+  #view-state .file-detail {
+    max-height: none;
+  }
+}
+
 .legend {
   flex: 0 0 auto;
   display: flex;
@@ -862,7 +925,7 @@ code,
   height: calc(var(--tabbar-h) + var(--safe-b));
   padding-bottom: var(--safe-b);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: var(--bg-raised);
   border-top: 1px solid var(--line);
 }
