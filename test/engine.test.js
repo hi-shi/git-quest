@@ -286,6 +286,58 @@ test('switch -c はブランチを作って移り、作業ツリーは変えな�
   assert.equal(repo.refs['refs/heads/feature'], repo.refs['refs/heads/main']);
 });
 
+// 本物の git は、切り替え先で内容が変わらないファイルの編集を持ち越し、
+// 変わるファイルに編集があれば切り替えを拒否する。
+// 黙って捨てると「switch したら作業が消えた」という最悪の壊れ方になるので固定する。
+test('switch は作業中の変更を持ち越す（切り替え先で内容が変わらないとき）', () => {
+  const repo = fresh();
+  run(repo, `
+    echo "a" > app.js
+    git add app.js
+    git commit -m "c1"
+    git branch other
+    echo "b" >> app.js
+    git add app.js
+    git switch other
+  `);
+  assert.equal(currentBranch(repo), 'other');
+  assert.equal(repo.workdir['app.js'], 'a\nb\n', '作業ツリーの編集が消えている');
+  assert.equal(readBlob(repo, repo.index['app.js']), 'a\nb\n', 'ステージの内容が消えている');
+});
+
+test('switch は作業中の変更が潰れるときは拒否する', () => {
+  const repo = fresh();
+  run(repo, `
+    echo "a" > app.js
+    git add app.js
+    git commit -m "c1"
+    git switch -c other
+    echo "other版" > app.js
+    git add app.js
+    git commit -m "c2"
+    git switch main
+    echo "作業中" >> app.js
+  `);
+  const r = runLine(repo, 'git switch other');
+  assert.equal(r.ok, false, '潰れるのに切り替えが通ってしまった');
+  assert.match(r.out, /would be overwritten/);
+  assert.equal(currentBranch(repo), 'main', '拒否したのに移動している');
+  assert.equal(repo.workdir['app.js'], 'a\n作業中\n', '拒否したのに編集が失われている');
+});
+
+test('switch は未追跡ファイルを消さない', () => {
+  const repo = fresh();
+  run(repo, `
+    echo "a" > app.js
+    git add app.js
+    git commit -m "c1"
+    git branch other
+    echo "メモ" > memo.txt
+    git switch other
+  `);
+  assert.equal(repo.workdir['memo.txt'], 'メモ\n');
+});
+
 test('fast-forward マージはマージコミットを作らない', () => {
   const repo = fresh();
   run(repo, `

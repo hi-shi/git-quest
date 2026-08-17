@@ -614,6 +614,59 @@ function cmdBranch(repo, argv) {
   );
 }
 
+/**
+ * ブランチ切り替えで作業中の変更を失わないようにする。判断は本物の git と同じ。
+ *
+ *   - 切り替え先で内容が変わるファイルに編集がある → 拒否する
+ *   - 内容が変わらないファイルの編集 → そのまま持ち越す
+ *
+ * 2つ目が要点。`checkoutCommit` は tree から index と作業ツリーを作り直すので、
+ * 何もしないと「切り替え先でも同じ内容だから安全」と判定したファイルの編集を
+ * 黙って捨ててしまう（同じコミットを指すブランチ間の移動で必ず起きる）。
+ *
+ * @returns {{err?: object, carry: () => void}} err があれば呼び出し側はそれを返す
+ */
+function guardSwitch(repo, sha) {
+  const s = status(repo);
+  const head = commitTree(repo, headCommit(repo));
+  const target = commitTree(repo, sha);
+  const dirty = [...s.staged, ...s.unstaged].map((f) => f.path);
+
+  const clobbered = dirty.filter((p) => head[p] !== target[p]);
+  if (clobbered.length) {
+    return {
+      err: err(
+        `error: Your local changes to the following files would be overwritten by checkout:\n${clobbered
+          .map((p) => '\t' + p)
+          .join('\n')}\nPlease commit your changes or stash them before you switch branches.`,
+        '未コミットの変更が消えてしまうので止めました。`git commit` か `git stash` を先に。'
+      ),
+      carry() {},
+    };
+  }
+
+  // 持ち越す分を控える。null は「無かった」= 削除された状態
+  const kept = dirty.map((p) => ({
+    path: p,
+    index: p in repo.index ? repo.index[p] : null,
+    work: toWorkKey(repo, p) in repo.workdir ? repo.workdir[toWorkKey(repo, p)] : null,
+  }));
+
+  return {
+    carry() {
+      for (const k of kept) {
+        if (k.index === null) delete repo.index[k.path];
+        else repo.index[k.path] = k.index;
+
+        const key = toWorkKey(repo, k.path);
+        if (k.work === null) delete repo.workdir[key];
+        else repo.workdir[key] = k.work;
+      }
+      if (kept.length) refreshIgnore(repo);
+    },
+  };
+}
+
 function cmdSwitch(repo, argv, { legacy = false } = {}) {
   const guard = needRepo(repo);
   if (guard) return guard;
@@ -672,10 +725,14 @@ function cmdSwitch(repo, argv, { legacy = false } = {}) {
       // origin/foo から追跡ブランチを自動生成
       const remoteRef = 'refs/remotes/origin/' + target;
       if (remoteRef in repo.refs) {
+        // 自動生成でも、作業中の変更を潰さない判断は同じ
+        const guardTrack = guardSwitch(repo, repo.refs[remoteRef]);
+        if (guardTrack.err) return guardTrack.err;
         repo.refs[ref] = repo.refs[remoteRef];
         sha = repo.refs[ref];
         repo.HEAD = { type: 'branch', ref };
         checkoutCommit(repo, sha);
+        guardTrack.carry();
         return ok(
           `branch '${target}' set up to track 'origin/${target}'.\nSwitched to a new branch '${target}'`
         );
@@ -689,23 +746,13 @@ function cmdSwitch(repo, argv, { legacy = false } = {}) {
     }
   }
 
-  const s = status(repo);
-  const head = commitTree(repo, headCommit(repo));
-  const target_ = commitTree(repo, sha);
-  const dirty = [...s.staged, ...s.unstaged].map((f) => f.path);
-  const clobbered = dirty.filter((p) => head[p] !== target_[p]);
-  if (clobbered.length) {
-    return err(
-      `error: Your local changes to the following files would be overwritten by checkout:\n${clobbered
-        .map((p) => '\t' + p)
-        .join('\n')}\nPlease commit your changes or stash them before you switch branches.`,
-      '未コミットの変更が消えてしまうので止めました。`git commit` か `git stash` を先に。'
-    );
-  }
+  const guardMove = guardSwitch(repo, sha);
+  if (guardMove.err) return guardMove.err;
 
   if (ref in repo.refs && !detach) repo.HEAD = { type: 'branch', ref };
   else repo.HEAD = { type: 'detached', sha };
   checkoutCommit(repo, sha);
+  guardMove.carry();
 
   if (repo.HEAD.type === 'detached') {
     return ok(
